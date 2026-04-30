@@ -1,0 +1,27 @@
+.DS_Store
+*.xcuserstate
+*.xcscmblueprint
+
+# Xcode user/workspace state
+xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Build output
+DerivedData/
+.derivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager local checkouts/builds
+.build/
+.swiftpm/
+
+# Local backups
+*.broken.xcodeproj/
+
+# Secrets and local environment
+.env
+.env.*
