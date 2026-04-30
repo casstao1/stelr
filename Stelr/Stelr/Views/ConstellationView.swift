@@ -83,7 +83,7 @@ struct ConstellationView: View {
                             .frame(width: r * 2, height: r * 2)
                             .position(node.pos)
                             .opacity(appeared ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.26).delay(0.32), value: appeared)
+                            .animation(.easeInOut(duration: 0.18).delay(0.12), value: appeared)
                             .animation(.easeInOut(duration: 0.28), value: selShowId)
                             .animation(.easeInOut(duration: 0.28), value: selFriendId)
                     }
@@ -102,7 +102,7 @@ struct ConstellationView: View {
                             )
                             .frame(width: geo.size.width, height: geo.size.height)
                             .opacity(appeared ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.34).delay(0.62), value: appeared)
+                            .animation(.easeInOut(duration: 0.22).delay(0.24), value: appeared)
                             .animation(.easeInOut(duration: 0.28), value: selShowId)
                             .animation(.easeInOut(duration: 0.28), value: selFriendId)
                         }
@@ -121,8 +121,8 @@ struct ConstellationView: View {
                         .position(node.pos)
                         .animation(.spring(response: 0.3, dampingFraction: 0.65), value: selShowId)
                         .animation(
-                            .spring(response: 0.34, dampingFraction: 0.64)
-                                .delay(0.04 + Double(idx) * 0.055),
+                            .spring(response: 0.26, dampingFraction: 0.68)
+                                .delay(0.02 + Double(idx) * 0.032),
                             value: appeared
                         )
                         .onTapGesture {
@@ -146,8 +146,8 @@ struct ConstellationView: View {
                         .position(inst.pos)
                         .animation(.spring(response: 0.35, dampingFraction: 0.72), value: selShowId)
                         .animation(
-                            .spring(response: 0.32, dampingFraction: 0.66)
-                                .delay(0.14 + Double(idx) * 0.034),
+                            .spring(response: 0.24, dampingFraction: 0.7)
+                                .delay(0.07 + Double(idx) * 0.02),
                             value: appeared
                         )
                         .onTapGesture {
@@ -227,7 +227,7 @@ struct ConstellationView: View {
         if animated {
             appeared = false
             DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.46, dampingFraction: 0.74)) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
                     appeared = true
                 }
             }

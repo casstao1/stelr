@@ -154,7 +154,7 @@ private struct MyShowRow: View {
     var onDecSeason: () -> Void
 
     @State private var epBumped = false
-    @State private var confettiBurst = false
+    @State private var seasonFirework = false
 
     private var vOpt: VibeOption { myShow.vibe }
     private var progress: Double { Double(myShow.currentEpisode) / Double(max(1, myShow.totalEpisodes)) }
@@ -215,12 +215,7 @@ private struct MyShowRow: View {
                     HStack(spacing: 8) {
                         stepButton("−", size: 34, isDisabled: myShow.currentEpisode <= 1, action: onDecEp)
                         ZStack {
-                            ConfettiBurstView(active: confettiBurst, colors: [
-                                Color(hex: show.gradient1),
-                                Color(hex: show.gradient2),
-                                Color(hex: show.accentColor),
-                                .white
-                            ])
+                            SeasonFinishFireworkView(active: seasonFirework)
                             .zIndex(0)
                             .allowsHitTesting(false)
 
@@ -237,7 +232,7 @@ private struct MyShowRow: View {
                                 epBumped = true
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { epBumped = false }
                                 if finishesSeason {
-                                    triggerConfetti()
+                                    triggerSeasonFirework()
                                 }
                             }
                             .zIndex(2)
@@ -253,8 +248,8 @@ private struct MyShowRow: View {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(LinearGradient(
                                 colors: [
-                                    Color.lighterHex(show.gradient1, amount: 0.48),
-                                    Color.lighterHex(show.gradient2, amount: 0.56)
+                                    Color.vibrantHex(show.gradient1, lift: 0.34, saturation: 2.35),
+                                    Color.vibrantHex(show.gradient2, lift: 0.38, saturation: 2.45)
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
@@ -343,63 +338,70 @@ private struct MyShowRow: View {
         .buttonStyle(.stelrPress)
     }
 
-    private func triggerConfetti() {
+    private func triggerSeasonFirework() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        confettiBurst = false
+        seasonFirework = false
         DispatchQueue.main.async {
-            confettiBurst = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.86) {
-                confettiBurst = false
+            seasonFirework = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.92) {
+                seasonFirework = false
             }
         }
     }
 }
 
-private struct ConfettiBurstView: View {
+private struct SeasonFinishFireworkView: View {
     let active: Bool
-    let colors: [Color]
 
     @State private var trailUp = false
     @State private var burst = false
 
-    private let pieces: [(x: CGFloat, y: CGFloat, rotation: Double)] = [
-        (-27, -56, -28), (-15, -68, 18), (0, -74, -8),
-        (15, -66, 32), (28, -54, -18), (-20, -42, 45),
-        (21, -41, -36), (0, -48, 12)
+    private let burstPieces: [(x: CGFloat, y: CGFloat, rotation: Double, length: CGFloat)] = [
+        (-24, -66, -42, 9), (-12, -77, -18, 10), (0, -82, 0, 11),
+        (13, -77, 18, 10), (25, -66, 42, 9), (-18, -55, -72, 8),
+        (18, -55, 72, 8), (0, -61, 90, 7)
     ]
 
     var body: some View {
         ZStack {
-            ForEach(0..<5, id: \.self) { index in
+            ForEach(0..<6, id: \.self) { index in
                 Circle()
-                    .fill(Color.white.opacity(0.9))
-                    .frame(width: 2.4, height: 2.4)
-                    .offset(y: trailUp ? -14 - CGFloat(index) * 6 : 12)
+                    .fill(Color.white.opacity(0.92))
+                    .frame(width: 2.2, height: 2.2)
+                    .offset(y: trailUp ? -8 - CGFloat(index) * 7 : 12)
                     .scaleEffect(trailUp ? 1 : 0.35)
                     .opacity(trailUp && !burst ? 1 : 0)
                     .animation(
-                        .easeOut(duration: 0.22).delay(Double(index) * 0.018),
+                        .easeOut(duration: 0.24).delay(Double(index) * 0.014),
                         value: trailUp
                     )
                     .animation(.easeOut(duration: 0.12), value: burst)
             }
 
-            ForEach(pieces.indices, id: \.self) { index in
+            ForEach(burstPieces.indices, id: \.self) { index in
+                let piece = burstPieces[index]
                 Capsule()
-                    .fill(colors[index % colors.count])
-                    .frame(width: 4, height: 8)
-                    .rotationEffect(.degrees(burst ? pieces[index].rotation : 0))
+                    .fill(Color.white.opacity(0.92))
+                    .frame(width: 2.3, height: piece.length)
+                    .rotationEffect(.degrees(burst ? piece.rotation : 0))
                     .offset(
-                        x: burst ? pieces[index].x : 0,
-                        y: burst ? pieces[index].y : -40
+                        x: burst ? piece.x : 0,
+                        y: burst ? piece.y : -46
                     )
                     .scaleEffect(burst ? 1 : 0.15)
                     .opacity(burst ? 1 : 0)
                     .animation(
-                        .easeOut(duration: 0.42).delay(Double(index) * 0.016),
+                        .easeOut(duration: 0.38).delay(Double(index) * 0.012),
                         value: burst
                     )
             }
+
+            Circle()
+                .stroke(Color.white.opacity(burst ? 0.42 : 0), lineWidth: 1)
+                .frame(width: burst ? 34 : 4, height: burst ? 34 : 4)
+                .offset(y: -66)
+                .opacity(burst ? 0.5 : 0)
+                .animation(.easeOut(duration: 0.42), value: burst)
         }
         .frame(width: 34, height: 34)
         .onAppear {
@@ -420,7 +422,7 @@ private struct ConfettiBurstView: View {
         resetFirework()
         DispatchQueue.main.async {
             trailUp = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
                 burst = true
             }
         }

@@ -37,6 +37,43 @@ extension Color {
             opacity: 1
         )
     }
+
+    static func vibrantHex(_ hex: String, lift: Double = 0.18, saturation: Double = 1.55) -> Color {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let r, g, b: UInt64
+        switch hex.count {
+        case 3:
+            (r, g, b) = ((int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6, 8:
+            (r, g, b) = (int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (r, g, b) = (0, 0, 0)
+        }
+
+        let sourceRed = Double(r) / 255
+        let sourceGreen = Double(g) / 255
+        let sourceBlue = Double(b) / 255
+        let sourceMax = max(sourceRed, sourceGreen, sourceBlue)
+        guard sourceMax > 0.001 else {
+            return Color(.sRGB, red: 0.72, green: 0.72, blue: 0.72, opacity: 1)
+        }
+
+        let targetBrightness = min(1, max(0.72, sourceMax + lift))
+        let red = sourceRed / sourceMax * targetBrightness
+        let green = sourceGreen / sourceMax * targetBrightness
+        let blue = sourceBlue / sourceMax * targetBrightness
+        let average = (red + green + blue) / 3
+
+        return Color(
+            .sRGB,
+            red: min(max(average + (red - average) * saturation, 0), 1),
+            green: min(max(average + (green - average) * saturation, 0), 1),
+            blue: min(max(average + (blue - average) * saturation, 0), 1),
+            opacity: 1
+        )
+    }
 }
 
 // App-wide design tokens

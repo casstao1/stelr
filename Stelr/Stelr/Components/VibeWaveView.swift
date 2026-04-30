@@ -17,9 +17,9 @@ struct VibeWaveView: View {
         let base = 4 + CGFloat(pow(normalizedScore, 1.25)) * 24
         switch score {
         case 7..<9:
-            return base * 0.88
+            return base * 0.74
         case 5..<7:
-            return base * 0.84
+            return base * 0.68
         default:
             return base
         }
