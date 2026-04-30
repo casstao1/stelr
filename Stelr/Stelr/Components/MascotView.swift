@@ -12,10 +12,10 @@ struct MascotView: View {
     private var color: Color {
         switch mood {
         case .idle:    return Color(hex: "a8907a")   // neutral warm
-        case .happy:   return Color(hex: "D6B84A")   // yellow — flaring
-        case .meh:     return Color(hex: "E5604A")   // orange — kindling
-        case .sad:     return Color(hex: "8B1A1A")   // dark red — dark star
-        case .excited: return Color(hex: "FFFFFF")   // white — supernova
+        case .happy:   return Color(hex: "E5813A")   // orange — Orange Star
+        case .meh:     return Color(hex: "8B1A1A")   // deep red — Red Dwarf
+        case .sad:     return Color(hex: "5A5A5A")   // flat grey — Cold Rock
+        case .excited: return Color(hex: "FFFFFF")   // white — Supernova
         }
     }
 

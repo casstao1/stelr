@@ -138,10 +138,10 @@ struct ShowDetailView: View {
                                             Text(friend.name)
                                                 .font(.system(size: 14.0, weight: .medium)).foregroundColor(.stelrText)
                                             Text("\(friend.vibe.emoji) \(friend.vibe.label)")
-                                                .font(.system(size: 12.3)).foregroundColor(friend.vibe.isDark ? .stelrMuted : Color(hex: friend.vibe.hexColor))
+                                                .font(.system(size: 12.3)).foregroundColor(Color(hex: friend.vibe.hexColor))
                                         }
                                         Spacer()
-                                        VibeWaveView(hexColor: VibeOption.hexColor(forScore: friend.score), score: friend.score, animate: false)
+                                        VibeWaveView(vibe: friend.vibe, size: 16, animate: false)
                                     }
                                     .padding(12)
                                     .background(Color.white.opacity(0.04))

@@ -28,6 +28,8 @@
 		811DFF555C6999BD50B61F3D /* ShowDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFCD6EC41615AD0164552B1 /* ShowDetailView.swift */; };
 		87CF690D41ACFC5CC1BA74CE /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75797BB1EF13C181D75C88D3 /* FeedView.swift */; };
 		92AE04F1C44983F920B61FF1 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D2A1E855805EF780E79A98 /* AppState.swift */; };
+		A0A0A0A0A0A0A0A0A0A0A001 /* SearchTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A0A0A0A0A0A0A0A0A0A101 /* SearchTabView.swift */; };
+		A0A0A0A0A0A0A0A0A0A0A002 /* YouTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A0A0A0A0A0A0A0A0A0A102 /* YouTabView.swift */; };
 		B49FE4242D3543047BE39529 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5833EA5FA7CE37BDEBA401 /* ContentView.swift */; };
 		C7F741BC85A19ADC59A38451 /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 816E38B3A13D4F64679D2329 /* SupabaseManager.swift */; };
 		D42783A65448D153034FE71D /* RotationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82EDEC95EA35284AFA56A2A4 /* RotationView.swift */; };
@@ -59,6 +61,8 @@
 		816E38B3A13D4F64679D2329 /* SupabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
 		82EDEC95EA35284AFA56A2A4 /* RotationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RotationView.swift; sourceTree = "<group>"; };
 		9BAFB2FE7AA9980FD7F2EFFC /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		A0A0A0A0A0A0A0A0A0A0A101 /* SearchTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTabView.swift; sourceTree = "<group>"; };
+		A0A0A0A0A0A0A0A0A0A0A102 /* YouTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTabView.swift; sourceTree = "<group>"; };
 		A914D7978288AC20ABC45B9C /* stelr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = stelr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CAFCD6EC41615AD0164552B1 /* ShowDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowDetailView.swift; sourceTree = "<group>"; };
 		D95E827C7B29209354C0EABD /* ConstellationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConstellationView.swift; sourceTree = "<group>"; };
@@ -133,6 +137,8 @@
 				3E4705FE6BE967DD155653CA /* HomeView.swift */,
 				6A00F5840FC3B561905D7D1E /* ProfileView.swift */,
 				82EDEC95EA35284AFA56A2A4 /* RotationView.swift */,
+				A0A0A0A0A0A0A0A0A0A0A101 /* SearchTabView.swift */,
+				A0A0A0A0A0A0A0A0A0A0A102 /* YouTabView.swift */,
 			);
 			name = Views;
 			path = Stelr/Views;
@@ -312,6 +318,7 @@
 				5D0A481F4181457C1B3B073D /* ProfileView.swift in Sources */,
 				5D4990498816C8A2901F7E05 /* RallySheet.swift in Sources */,
 				D42783A65448D153034FE71D /* RotationView.swift in Sources */,
+				A0A0A0A0A0A0A0A0A0A0A001 /* SearchTabView.swift in Sources */,
 				811DFF555C6999BD50B61F3D /* ShowDetailView.swift in Sources */,
 				27BE329203E2A7FC40DB7875 /* ShowPosterView.swift in Sources */,
 				7C7114DCF94E9F56133C1D3A /* ShowSearchSheet.swift in Sources */,
@@ -321,6 +328,7 @@
 				045D53869CBD9457FBCACF61 /* TellEveryoneSheet.swift in Sources */,
 				6FAE6F0B4E19A2C96E7A2871 /* VibeCheckSheet.swift in Sources */,
 				E8A7DE008DBBE5CD839FC603 /* VibeWaveView.swift in Sources */,
+				A0A0A0A0A0A0A0A0A0A0A002 /* YouTabView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

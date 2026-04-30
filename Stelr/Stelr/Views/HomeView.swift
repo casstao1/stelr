@@ -115,7 +115,7 @@ struct HomeView: View {
                                         .font(.custom("Georgia", size: 24.6)).foregroundColor(.white)
                                         .shadow(color: .black.opacity(0.6), radius: 7, y: 2)
                                     HStack(alignment: .center, spacing: 0) {
-                                        VibeWaveView(hexColor: VibeOption.hexColor(forScore: hero.score), score: hero.score)
+                                        VibeWaveView(vibe: hero.vibe, size: 22, animate: true)
                                         Spacer(minLength: 8)
                                         HStack(spacing: 7) {
                                             pillButton("dot.radiowaves.left.and.right", label: "rally") { showRally = true }
@@ -177,7 +177,7 @@ struct HomeView: View {
             .ignoresSafeArea(edges: .top)
         }
         .sheet(isPresented: $showVibeSheet) {
-            VibeCheckSheet(show: heroShow, currentScore: hero.score) { opt in
+            VibeCheckSheet(show: heroShow, currentVibe: hero.vibe) { opt in
                 appState.updateVibeForFriend(friendId: hero.id, vibe: opt)
             }
         }

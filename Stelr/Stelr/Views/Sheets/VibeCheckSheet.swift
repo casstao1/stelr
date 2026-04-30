@@ -2,28 +2,15 @@ import SwiftUI
 
 struct VibeCheckSheet: View {
     let show: Show
-    let currentScore: Double
+    let currentVibe: VibeOption?           // replaces currentScore — nil if never checked in
     var onSubmit: (VibeOption) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selected: VibeOption?
     @State private var done = false
 
     private let orderedOptions: [VibeOption] = [
-        .mustWatch,
-        .goingGood,
-        .justOk,
-        .superBoring
+        .mustWatch, .goingGood, .justOk, .superBoring
     ]
-
-    private func optionTitle(_ option: VibeOption) -> String {
-        switch option {
-        case .mustWatch:   return "must watch"
-        case .goingGood:   return "going to watch more"
-        case .justOk:      return "meh"
-        case .superBoring: return "kinda boring"
-        case .notWatching: return "not watching"
-        }
-    }
 
     private var mascotMood: MascotMood {
         switch selected {
@@ -47,8 +34,17 @@ struct VibeCheckSheet: View {
                     Text("How's it holding up?")
                         .font(.custom("Georgia", size: 17.9)).italic()
                         .foregroundColor(.stelrText)
-                    Text("\(show.title) · vibe score \(String(format: "%.1f", currentScore))")
-                        .font(.system(size: 13.4)).foregroundColor(.stelrMuted)
+                    HStack(spacing: 6) {
+                        Text(show.title)
+                            .font(.system(size: 13.4)).foregroundColor(.stelrMuted)
+                        if let v = currentVibe {
+                            Text("·")
+                                .font(.system(size: 13.4)).foregroundColor(.stelrMuted.opacity(0.45))
+                            Text("\(v.emoji) \(v.label)")
+                                .font(.system(size: 13.4))
+                                .foregroundColor(Color(hex: v.hexColor))
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 8).padding(.top, 18).padding(.bottom, 20)
@@ -60,32 +56,50 @@ struct VibeCheckSheet: View {
                 ForEach(orderedOptions) { opt in
                     let active = selected == opt
                     let activeColor = Color(hex: opt.hexColor)
-                    let readableActiveColor = opt.isDark ? Color.white.opacity(0.72) : activeColor
-                    let selectedBackground = opt.isDark ? Color.black.opacity(0.42) : activeColor.opacity(0.12)
-                    let selectedBorder = opt.isDark ? Color.white.opacity(0.28) : activeColor.opacity(0.55)
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         withAnimation(.spring(response: 0.25)) { selected = opt }
                     } label: {
                         HStack(spacing: 12) {
-                            Text(opt.emoji)
-                                .font(.system(size: 24.0))
-                                .frame(width: 34)
-                            Text(optionTitle(opt))
-                                .font(.system(size: 15.2, weight: .medium))
-                                .foregroundColor(active ? readableActiveColor : .stelrText)
+                            // Mini orb as selector indicator
+                            ZStack {
+                                if active {
+                                    Circle()
+                                        .fill(RadialGradient(
+                                            colors: [activeColor.opacity(0.55), .clear],
+                                            center: .center, startRadius: 0, endRadius: 14
+                                        ))
+                                        .frame(width: 28, height: 28)
+                                }
+                                Circle()
+                                    .fill(opt.isCold ? activeColor.opacity(0.5) : activeColor)
+                                    .frame(width: active ? 13 : 10, height: active ? 13 : 10)
+                            }
+                            .frame(width: 28)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(opt.label)
+                                    .font(.system(size: 15.2, weight: .medium))
+                                    .foregroundColor(active ? activeColor : .stelrText)
+                                Text(opt.heatName)
+                                    .font(.system(size: 11.5))
+                                    .foregroundColor(active ? activeColor.opacity(0.7) : .stelrMuted.opacity(0.55))
+                            }
                             Spacer()
+                            Text(opt.emoji)
+                                .font(.system(size: 22.0))
                             if active {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 17.0, weight: .semibold))
-                                    .foregroundColor(readableActiveColor)
+                                    .foregroundColor(activeColor)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(height: 52)
                         .padding(.horizontal, 14)
-                        .background(active ? selectedBackground : Color.white.opacity(0.04))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(active ? selectedBorder : Color.stelrBorder, lineWidth: 1.5))
+                        .background(active ? activeColor.opacity(0.10) : Color.white.opacity(0.04))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+                            active ? activeColor.opacity(0.50) : Color.stelrBorder, lineWidth: 1.5
+                        ))
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .scaleEffect(active ? 1.025 : 1.0)
                     }
@@ -121,7 +135,7 @@ struct VibeCheckSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 10)
         .background(Color(hex: "1c1814").ignoresSafeArea())
-        .presentationDetents([.height(440)])
+        .presentationDetents([.height(460)])
         .presentationDragIndicator(.hidden)
         .preferredColorScheme(.dark)
     }

@@ -7,9 +7,9 @@ struct BottomTabBar: View {
 
     private let items: [(label: String, icon: String)] = [
         ("Stelr",    "sparkles"),
-        ("Friends",  "person.2.fill"),
-        ("Rotation", "square.grid.2x2.fill"),
-        ("Profile",  "person.fill"),
+        ("Activity", "bolt.fill"),
+        ("Search",   "magnifyingglass"),
+        ("You",      "person.fill"),
     ]
 
     var body: some View {

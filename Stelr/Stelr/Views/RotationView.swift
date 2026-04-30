@@ -111,7 +111,7 @@ struct RotationView: View {
         }
         .sheet(item: $activeVibeSheet) { ms in
             if let show = appState.show(for: ms.showId) {
-                VibeCheckSheet(show: show, currentScore: ms.score) { opt in
+                VibeCheckSheet(show: show, currentVibe: ms.vibe) { opt in
                     appState.updateVibeForMyShow(myShowId: ms.id, vibe: opt)
                 }
             }
@@ -262,16 +262,14 @@ private struct MyShowRow: View {
                 }
                 .frame(height: 5).padding(.bottom, 10)
 
-                HStack(alignment: .center, spacing: 10) {
-                    Text(String(format: "%.1f", myShow.score))
-                        .font(.custom("Georgia", size: 22).weight(.semibold))
-                        .foregroundColor(Color(hex: VibeOption.hexColor(forScore: myShow.score)))
-                        .contentTransition(.numericText(countsDown: false))
-                        .animation(.spring(response: 0.55, dampingFraction: 0.72), value: myShow.score)
-                    VibeWaveView(hexColor: VibeOption.hexColor(forScore: myShow.score),
-                                 score: myShow.score,
-                                 animate: false,
-                                 showScore: false)
+                HStack(alignment: .center, spacing: 8) {
+                    Text("\(vOpt.emoji) \(vOpt.label)")
+                        .font(.system(size: 13.2, weight: .medium))
+                        .foregroundColor(Color(hex: vOpt.hexColor))
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(Color(hex: vOpt.hexColor).opacity(0.12))
+                        .clipShape(Capsule())
+                    VibeWaveView(vibe: vOpt, size: 14, animate: true)
                 }
                 .padding(.bottom, 9)
 
@@ -361,7 +359,7 @@ private struct MyShowRow: View {
     }
 }
 
-private struct SeasonFinishFireworkView: View {
+struct SeasonFinishFireworkView: View {
     let active: Bool
     let primaryColor: Color
     let secondaryColor: Color

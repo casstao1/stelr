@@ -101,7 +101,7 @@ struct FriendProfileSheet: View {
                                                 .font(.custom("Georgia", size: 19.0)).foregroundColor(.stelrText)
                                             Text(show.platform)
                                                 .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
-                                            VibeWaveView(hexColor: VibeOption.hexColor(forScore: friend.score), score: friend.score, animate: false)
+                                            VibeWaveView(vibe: friend.vibe, size: 16, animate: false)
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")

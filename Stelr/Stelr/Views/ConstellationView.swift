@@ -69,25 +69,6 @@ struct ConstellationView: View {
                         drawStars(ctx: ctx, size: size)
                     }
 
-                    // Orbit rings — SwiftUI views so opacity animates on selection
-                    ForEach(nodes, id: \.show.id) { node in
-                        let r      = orbitRadius(size: geo.size)
-                        let dim    = dimmedShow(node.show.id)
-                        let active = selShowId == node.show.id
-                        Circle()
-                            .stroke(
-                                Color(hex: node.show.accentColor)
-                                    .opacity(dim ? 0.04 : active ? 0.32 : 0.16),
-                                style: StrokeStyle(lineWidth: active ? 1.0 : 0.6, dash: [4, 7])
-                            )
-                            .frame(width: r * 2, height: r * 2)
-                            .position(node.pos)
-                            .opacity(appeared ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.18).delay(0.12), value: appeared)
-                            .animation(.easeInOut(duration: 0.28), value: selShowId)
-                            .animation(.easeInOut(duration: 0.28), value: selFriendId)
-                    }
-
                     // Spokes — SwiftUI Path views so opacity animates on selection
                     ForEach(instances) { inst in
                         if let node = nodes.first(where: { $0.show.id == inst.showId }) {
@@ -676,10 +657,17 @@ private struct ShowNodeView: View {
     let isDimmed: Bool
 
     private var accent: Color { Color(hex: node.show.accentColor) }
-    private var dotSize: CGFloat { isActive ? 17 : node.isShared ? 13 : 10 }
+    private var dotSize: CGFloat {
+        if isActive { return 20 }
+        switch node.watchers.count {
+        case 0, 1: return 10
+        case 2:    return 13
+        default:   return 17
+        }
+    }
 
     static func dotAnchorCorrection(isActive: Bool) -> CGFloat {
-        isActive ? -14 : -13
+        isActive ? -15 : -13
     }
 
     var body: some View {
@@ -702,13 +690,13 @@ private struct ShowNodeView: View {
                             colors: [accent.opacity(isActive ? 0.33 : 0.17), .clear],
                             center: .center,
                             startRadius: 0,
-                            endRadius: isActive ? 28 : 18
+                            endRadius: isActive ? 32 : 18
                         )
                     )
-                    .frame(width: isActive ? 56 : 36, height: isActive ? 56 : 36)
+                    .frame(width: isActive ? 64 : 36, height: isActive ? 64 : 36)
 
-                // Dashed outer ring for shared shows
-                if node.isShared && !isActive {
+                // Dashed outer ring for multi-watcher shows
+                if node.watchers.count > 1 && !isActive {
                     Circle()
                         .stroke(accent.opacity(0.35), style: StrokeStyle(lineWidth: 0.8, dash: [3, 5]))
                         .frame(width: dotSize + 8, height: dotSize + 8)
@@ -719,7 +707,7 @@ private struct ShowNodeView: View {
                     .fill(accent)
                     .frame(width: dotSize, height: dotSize)
                     .shadow(color: accent.opacity(isActive ? 0.9 : 0.6),
-                            radius: isActive ? 10 : node.isShared ? 6 : 4)
+                            radius: isActive ? 10 : node.watchers.count > 1 ? 6 : 4)
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.65), value: isActive)
         }

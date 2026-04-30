@@ -6,57 +6,118 @@ enum VibeOption: String, Codable, CaseIterable, Identifiable {
     case goingGood   = "going_good"
     case justOk      = "just_ok"
     case superBoring = "super_boring"
+    case notForMe    = "not_for_me"
     case notWatching = "not_watching"
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .mustWatch:   return "must watch"
-        case .goingGood:   return "cool"
-        case .justOk:      return "meh"
-        case .superBoring: return "boring"
+        case .mustWatch:   return "can't stop"
+        case .goingGood:   return "getting good"
+        case .justOk:      return "it's fine"
+        case .superBoring: return "losing me"
+        case .notForMe:    return "not for me"
         case .notWatching: return "not watching"
         }
     }
     var emoji: String {
         switch self {
-        case .mustWatch:   return "✨"
-        case .goingGood:   return "🌟"
-        case .justOk:      return "🔥"
-        case .superBoring: return "💤"
+        case .mustWatch:   return "🔥"
+        case .goingGood:   return "📈"
+        case .justOk:      return "😐"
+        case .superBoring: return "📉"
+        case .notForMe:    return "🚫"
         case .notWatching: return "💤"
+        }
+    }
+    /// Heat state display name (shown on orbs and detail views)
+    var heatName: String {
+        switch self {
+        case .mustWatch:   return "Supernova"
+        case .goingGood:   return "Orange Star"
+        case .justOk:      return "Red Dwarf"
+        case .superBoring: return "Cold Rock"
+        case .notForMe:    return "Dark Matter"
+        case .notWatching: return "—"
         }
     }
     var scoreDelta: Double {
         switch self {
         case .mustWatch:   return +0.6
         case .goingGood:   return +0.3
-        case .justOk:      return 0.0
+        case .justOk:      return -0.1
         case .superBoring: return -0.5
+        case .notForMe:    return -0.8
         case .notWatching: return 0.0
         }
     }
     var hexColor: String {
         switch self {
-        case .mustWatch:   return "FFFFFF"   // white      — supernova
-        case .goingGood:   return "E5604A"   // orange     — going to watch more
-        case .justOk:      return "D86262"   // red        — meh
-        case .superBoring: return "000000"   // black      — kinda boring
-        case .notWatching: return "8A8070"
+        case .mustWatch:   return "FFFFFF"   // white — Supernova
+        case .goingGood:   return "E5813A"   // warm orange — Orange Star
+        case .justOk:      return "8B1A1A"   // deep red — Red Dwarf
+        case .superBoring: return "5A5A5A"   // flat grey — Cold Rock
+        case .notForMe:    return "2244bb"   // deep blue — Dark Matter
+        case .notWatching: return "4A4A4A"
         }
     }
-    /// True for vibes whose badge hex is too dark to read on the dark sheet background
-    var isDark: Bool { self == .superBoring }
-
-    /// Score-based color for wave bars and indicators — stellar birth progression.
-    static func hexColor(forScore score: Double) -> String {
-        switch score {
-        case 9...:  return "FFFFFF"   // white    — supernova
-        case 6...:  return "E5604A"   // orange   — going to watch more
-        case 3...:  return "D86262"   // red      — meh
-        default:    return "000000"   // black    — kinda boring
+    /// Pulse animation: hot vibes breathe, cold rocks are static
+    var pulseEnabled: Bool {
+        switch self {
+        case .mustWatch:   return true
+        case .goingGood:   return true
+        case .justOk:      return false
+        case .superBoring: return false
+        case .notForMe:    return false
+        case .notWatching: return false
         }
+    }
+    /// True when the orb should appear matte (no glow)
+    var isCold: Bool { self == .superBoring || self == .notForMe || self == .notWatching }
+    /// True when labels should use muted treatment instead of the vibe color.
+    var isDark: Bool { isCold }
+
+    /// Derive the vibe label from a numeric check-in score (1.0–5.0 in 0.5 steps).
+    static func from(score: Double) -> VibeOption {
+        switch score {
+        case ..<2.5:  return .notForMe     // 1.0 – 2.0
+        case ..<3.5:  return .superBoring  // 2.5 – 3.0
+        case 3.5:     return .justOk       // 3.5
+        case ..<4.5:  return .goingGood    // 4.0
+        default:      return .mustWatch    // 4.5 – 5.0
+        }
+    }
+}
+
+// MARK: - CheckInStep
+/// One of the 9 discrete rating steps on the check-in slider.
+struct CheckInStep {
+    let score: Double
+    let starType: String
+    let coreHex: String      // star core colour
+    let pulseSeconds: Double // full pulse cycle duration
+    let vibe: VibeOption
+
+    static let all: [CheckInStep] = [
+        CheckInStep(score: 1.0, starType: "Cold rock",   coreHex: "1a1a2e", pulseSeconds: 5.0, vibe: .notForMe),
+        CheckInStep(score: 1.5, starType: "Dead star",   coreHex: "0f1f4a", pulseSeconds: 4.5, vibe: .notForMe),
+        CheckInStep(score: 2.0, starType: "Blue dwarf",  coreHex: "1a2f7a", pulseSeconds: 4.0, vibe: .notForMe),
+        CheckInStep(score: 2.5, starType: "Blue star",   coreHex: "2244bb", pulseSeconds: 3.5, vibe: .superBoring),
+        CheckInStep(score: 3.0, starType: "Blue-white",  coreHex: "3388dd", pulseSeconds: 3.0, vibe: .superBoring),
+        CheckInStep(score: 3.5, starType: "Light blue",  coreHex: "66bbff", pulseSeconds: 2.6, vibe: .justOk),
+        CheckInStep(score: 4.0, starType: "Yellow star", coreHex: "ffdd44", pulseSeconds: 2.2, vibe: .goingGood),
+        CheckInStep(score: 4.5, starType: "Orange star", coreHex: "ff8833", pulseSeconds: 1.8, vibe: .mustWatch),
+        CheckInStep(score: 5.0, starType: "Supernova",   coreHex: "ffffff", pulseSeconds: 1.4, vibe: .mustWatch),
+    ]
+
+    static func from(_ score: Double) -> CheckInStep {
+        all.min(by: { abs($0.score - score) < abs($1.score - score) }) ?? all[0]
+    }
+
+    /// core size: 32pt at 1.0 → 60pt at 5.0
+    static func coreSize(for score: Double) -> CGFloat {
+        32 + CGFloat((score - 1.0) / 4.0) * 28
     }
 }
 

@@ -125,14 +125,14 @@ private struct LiveActivityRow: View {
                                     .font(.system(size: 11.8)).foregroundColor(.stelrMuted)
                                 Text("\(activity.vibe.emoji) \(activity.vibe.label)")
                                     .font(.system(size: 11.8))
-                                    .foregroundColor(activity.vibe.isDark ? .stelrMuted : Color(hex: activity.vibe.hexColor))
+                                    .foregroundColor(Color(hex: activity.vibe.hexColor))
                                     .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(activity.vibe.isDark ? Color.white.opacity(0.06) : Color(hex: activity.vibe.hexColor).opacity(0.09))
+                                    .background(Color(hex: activity.vibe.hexColor).opacity(0.09))
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                         }
                         Spacer()
-                        VibeWaveView(hexColor: VibeOption.hexColor(forScore: friend.score), score: friend.score, animate: false)
+                        VibeWaveView(vibe: activity.vibe, size: 14, animate: false)
                     }
                     .padding(10)
                     .background(Color.white.opacity(0.04))

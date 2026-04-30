@@ -129,26 +129,28 @@ struct ContentView: View {
     private var selectedTabView: some View {
         switch selectedTab {
         case 0:
+            // Constellation — social home screen
             ConstellationView(
                 animateEntrance: tabShouldAnimate[0] ?? true,
                 animationToken: tabAnimationTokens[0, default: 0]
             )
         case 1:
+            // Activity — chronological friend check-in feed
             FeedView(
                 animateEntrance: tabShouldAnimate[1] ?? true,
                 animationToken: tabAnimationTokens[1, default: 0],
                 onFriendTap: { friend in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    friendView = friend
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        friendView = friend
+                    }
                 }
-            })
-        case 2:
-            RotationView(
-                animateEntrance: tabShouldAnimate[2] ?? true,
-                animationToken: tabAnimationTokens[2, default: 0]
             )
+        case 2:
+            // Search — find shows and add them to your lists
+            SearchTabView()
         default:
-            ProfileView()
+            // You — profile + active shows (My Rotation lives here, not a separate tab)
+            YouTabView()
         }
     }
 

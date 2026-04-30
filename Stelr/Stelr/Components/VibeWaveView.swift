@@ -1,105 +1,91 @@
 import SwiftUI
 
+// Heat orb — the single visual language for a show's vibe state.
+// Three sizes used across the app (12 / 24 / large) via the `size` parameter.
+// No numeric score is ever displayed — the glow, size, and pulse ARE the score.
+
 struct VibeWaveView: View {
-    let hexColor: String
-    let score: Double
+    let vibe: VibeOption
+    /// Diameter of the orb itself (not the glow halo). Defaults to 20.
+    var size: CGFloat = 20
+    /// When true the orb breathes (scale pulse). Hot vibes pulse, cold rocks don't.
     var animate: Bool = true
-    var showScore: Bool = true
 
-    @State private var bumped = false
-    // Initialized to -1 so first render never triggers a spurious bump
-    @State private var prevScore: Double = -1
-
-    private var normalizedScore: Double {
-        min(max(score / 10, 0), 1)
-    }
-
-    private var orbSize: CGFloat {
-        let base = 4 + CGFloat(pow(normalizedScore, 1.25)) * 24
-        switch score {
-        case 7..<9:
-            return base * 0.74
-        case 5..<7:
-            return base * 0.68
-        default:
-            return base
-        }
-    }
+    @State private var pulsing = false
 
     private var orbColor: Color {
-        switch score {
-        case 9...: return .white
-        case 7..<9: return Color.stelrAccent
-        case 5..<7: return Color(hex: "D6B84A")
-        case 3..<5: return Color(hex: "D86262")
-        default: return .black
-        }
+        vibe.isCold ? Color(hex: vibe.hexColor).opacity(0.7) : Color(hex: vibe.hexColor)
     }
 
-    private var scoreColor: Color {
-        score < 3 ? .white.opacity(0.5) : orbColor
+    private var glowRadius: CGFloat {
+        switch vibe {
+        case .mustWatch:   return size * 1.4
+        case .goingGood:   return size * 1.0
+        case .justOk:      return size * 0.5
+        case .superBoring: return 0
+        case .notWatching: return 0
+        }
     }
 
     private var glowOpacity: Double {
-        score < 3 ? 0.18 : 0.35 + normalizedScore * 0.35
+        switch vibe {
+        case .mustWatch:   return 0.62
+        case .goingGood:   return 0.42
+        case .justOk:      return 0.22
+        case .superBoring: return 0
+        case .notWatching: return 0
+        }
     }
 
     var body: some View {
-        HStack(spacing: 7) {
-            if showScore {
-                Text(String(format: "%.1f", score))
-                    .font(.custom("Georgia", size: 23.5).weight(.semibold))
-                    .foregroundColor(scoreColor)
-                    .contentTransition(.numericText(countsDown: false))
-                    .scaleEffect(bumped ? 1.18 : 1.0)
-                    .animation(.spring(response: 0.55, dampingFraction: 0.72), value: score)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.5), value: bumped)
-            }
-
-            ZStack {
+        ZStack {
+            // Glow halo — absent for cold rocks
+            if !vibe.isCold {
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
                                 orbColor.opacity(glowOpacity),
-                                orbColor.opacity(glowOpacity * 0.28),
-                                .clear
+                                orbColor.opacity(glowOpacity * 0.25),
+                                .clear,
                             ],
                             center: .center,
                             startRadius: 0,
-                            endRadius: 23
+                            endRadius: size * 1.6
                         )
                     )
-                    .frame(width: 46, height: 46)
-                    .scaleEffect(bumped ? 1.16 : 1.0)
-
-                Circle()
-                    .fill(orbColor)
-                    .frame(width: orbSize, height: orbSize)
-                    .overlay(
-                        Circle()
-                            .stroke(score >= 9 ? Color.white.opacity(0.7) : Color.white.opacity(0.12), lineWidth: 0.8)
-                    )
-                    .shadow(color: orbColor.opacity(glowOpacity), radius: score < 3 ? 2.5 : 8)
-                    .scaleEffect(bumped ? 1.18 : 1.0)
-
-                if animate && score >= 6 {
-                    Circle()
-                        .stroke(orbColor.opacity(0.22), lineWidth: 1)
-                        .frame(width: orbSize + 10, height: orbSize + 10)
-                        .scaleEffect(bumped ? 1.28 : 1.0)
-                }
+                    .frame(width: size * 3.2, height: size * 3.2)
+                    .scaleEffect(pulsing ? 1.18 : 1.0)
             }
-            .frame(width: 34, height: 34)
-            .animation(.spring(response: 0.3, dampingFraction: 0.62), value: score)
-            .animation(.spring(response: 0.25, dampingFraction: 0.5), value: bumped)
+
+            // Core orb
+            Circle()
+                .fill(vibe.isCold ? Color(hex: vibe.hexColor).opacity(0.55) : orbColor)
+                .frame(width: size, height: size)
+                .overlay(
+                    Circle().stroke(
+                        vibe == .mustWatch ? Color.white.opacity(0.55) : Color.white.opacity(0.08),
+                        lineWidth: 0.7
+                    )
+                )
+                .shadow(
+                    color: orbColor.opacity(vibe.isCold ? 0 : (vibe == .mustWatch ? 0.9 : 0.5)),
+                    radius: vibe.isCold ? 0 : size * 0.6
+                )
+                .scaleEffect(pulsing ? 1.12 : 1.0)
         }
-        .onAppear { prevScore = score }
-        .onChange(of: score) { _, newVal in
-            guard newVal != prevScore, prevScore >= 0 else { prevScore = newVal; return }
-            prevScore = newVal
-            bumped = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { bumped = false }
+        .onAppear { startPulse() }
+        .onChange(of: vibe) { _, _ in startPulse() }
+    }
+
+    private func startPulse() {
+        guard animate && vibe.pulseEnabled else {
+            pulsing = false
+            return
+        }
+        let speed: Double = vibe == .mustWatch ? 0.7 : 1.1
+        withAnimation(.easeInOut(duration: speed).repeatForever(autoreverses: true)) {
+            pulsing = true
         }
     }
 }
