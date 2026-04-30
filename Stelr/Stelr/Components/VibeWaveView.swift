@@ -4,6 +4,7 @@ struct VibeWaveView: View {
     let hexColor: String
     let score: Double
     var animate: Bool = true
+    var showScore: Bool = true
 
     @State private var bumped = false
     // Initialized to -1 so first render never triggers a spurious bump
@@ -45,11 +46,15 @@ struct VibeWaveView: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Text(String(format: "%.1f", score))
-                .font(.custom("Georgia", size: 23.5).weight(.semibold))
-                .foregroundColor(scoreColor)
-                .scaleEffect(bumped ? 1.18 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.5), value: bumped)
+            if showScore {
+                Text(String(format: "%.1f", score))
+                    .font(.custom("Georgia", size: 23.5).weight(.semibold))
+                    .foregroundColor(scoreColor)
+                    .contentTransition(.numericText(countsDown: false))
+                    .scaleEffect(bumped ? 1.18 : 1.0)
+                    .animation(.spring(response: 0.55, dampingFraction: 0.72), value: score)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.5), value: bumped)
+            }
 
             ZStack {
                 Circle()

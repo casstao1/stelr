@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		045D53869CBD9457FBCACF61 /* TellEveryoneSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB893522E9A34A255C37815 /* TellEveryoneSheet.swift */; };
+		0B8E3C21F7D74A0E8CF94015 /* apple_fuller_bloom_firework.json in Resources */ = {isa = PBXBuildFile; fileRef = 78F19651F01E4E7DB7C24E7E /* apple_fuller_bloom_firework.json */; };
 		27BE329203E2A7FC40DB7875 /* ShowPosterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622CA2478A94A0165BA2159D /* ShowPosterView.swift */; };
 		2842A0AA7AA09CE6A417159D /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7270CF27EC770E23B7157E1E /* AvatarView.swift */; };
 		393091B349CD489AAA7207DA /* ConstellationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D95E827C7B29209354C0EABD /* ConstellationView.swift */; };
@@ -53,6 +54,7 @@
 		6B0F3D921F77AEC7244DFE74 /* VibeWaveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeWaveView.swift; sourceTree = "<group>"; };
 		7270CF27EC770E23B7157E1E /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
 		75797BB1EF13C181D75C88D3 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
+		78F19651F01E4E7DB7C24E7E /* apple_fuller_bloom_firework.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = apple_fuller_bloom_firework.json; sourceTree = "<group>"; };
 		81331D2BF11555872BF5D8EE /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		816E38B3A13D4F64679D2329 /* SupabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
 		82EDEC95EA35284AFA56A2A4 /* RotationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RotationView.swift; sourceTree = "<group>"; };
@@ -86,6 +88,15 @@
 			);
 			name = App;
 			path = Stelr/App;
+			sourceTree = "<group>";
+		};
+		127A8B929A5E4A4AB42D0C79 /* Animations */ = {
+			isa = PBXGroup;
+			children = (
+				78F19651F01E4E7DB7C24E7E /* apple_fuller_bloom_firework.json */,
+			);
+			name = Animations;
+			path = Stelr/Animations;
 			sourceTree = "<group>";
 		};
 		285C59BEC8F4164F036382BE /* Stelr */ = {
@@ -163,6 +174,7 @@
 		92572D49CB29C46DDEC817B4 = {
 			isa = PBXGroup;
 			children = (
+				127A8B929A5E4A4AB42D0C79 /* Animations */,
 				08A819AA20A6BB6FB32107A2 /* App */,
 				C3CEA92BFD099CC505F4B0F4 /* Components */,
 				E5D0EEBA5EB1048EEEBD5DEB /* Config */,
@@ -272,6 +284,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0B8E3C21F7D74A0E8CF94015 /* apple_fuller_bloom_firework.json in Resources */,
 				66E3474E54F6670E32D5837E /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

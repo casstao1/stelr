@@ -215,7 +215,11 @@ private struct MyShowRow: View {
                     HStack(spacing: 8) {
                         stepButton("−", size: 34, isDisabled: myShow.currentEpisode <= 1, action: onDecEp)
                         ZStack {
-                            SeasonFinishFireworkView(active: seasonFirework)
+                            SeasonFinishFireworkView(
+                                active: seasonFirework,
+                                primaryColor: Color.vibrantHex(show.gradient1, lift: 0.36, saturation: 1.45),
+                                secondaryColor: Color.vibrantHex(show.gradient2, lift: 0.4, saturation: 1.5)
+                            )
                             .zIndex(0)
                             .allowsHitTesting(false)
 
@@ -248,8 +252,8 @@ private struct MyShowRow: View {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(LinearGradient(
                                 colors: [
-                                    Color.vibrantHex(show.gradient1, lift: 0.34, saturation: 2.35),
-                                    Color.vibrantHex(show.gradient2, lift: 0.38, saturation: 2.45)
+                                    Color.vibrantHex(show.gradient1, lift: 0.36, saturation: 1.45),
+                                    Color.vibrantHex(show.gradient2, lift: 0.4, saturation: 1.5)
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
@@ -261,7 +265,17 @@ private struct MyShowRow: View {
                 }
                 .frame(height: 5).padding(.bottom, 10)
 
-                VibeWaveView(hexColor: VibeOption.hexColor(forScore: myShow.score), score: myShow.score, animate: false)
+                HStack(alignment: .center, spacing: 10) {
+                    Text(String(format: "%.1f", myShow.score))
+                        .font(.custom("Georgia", size: 22).weight(.semibold))
+                        .foregroundColor(Color(hex: VibeOption.hexColor(forScore: myShow.score)))
+                        .contentTransition(.numericText(countsDown: false))
+                        .animation(.spring(response: 0.55, dampingFraction: 0.72), value: myShow.score)
+                    VibeWaveView(hexColor: VibeOption.hexColor(forScore: myShow.score),
+                                 score: myShow.score,
+                                 animate: false,
+                                 showScore: false)
+                }
                 .padding(.bottom, 9)
 
                 // Friends watching
@@ -343,7 +357,7 @@ private struct MyShowRow: View {
         seasonFirework = false
         DispatchQueue.main.async {
             seasonFirework = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.92) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.98) {
                 seasonFirework = false
             }
         }
@@ -352,89 +366,163 @@ private struct MyShowRow: View {
 
 private struct SeasonFinishFireworkView: View {
     let active: Bool
+    let primaryColor: Color
+    let secondaryColor: Color
 
-    @State private var trailUp = false
-    @State private var burst = false
+    @State private var launchDate: Date?
+    @State private var isRunning = false
 
-    private let burstPieces: [(x: CGFloat, y: CGFloat, rotation: Double, length: CGFloat)] = [
-        (-24, -66, -42, 9), (-12, -77, -18, 10), (0, -82, 0, 11),
-        (13, -77, 18, 10), (25, -66, 42, 9), (-18, -55, -72, 8),
-        (18, -55, 72, 8), (0, -61, 90, 7)
-    ]
+    private let launchDuration: TimeInterval = 0.24
+    private let bloomDuration: TimeInterval = 0.68
+    private let canvasSize: CGFloat = 132
+    private let centerX: CGFloat = 66
+    private let launchStartY: CGFloat = 102
+    private let bloomY: CGFloat = 40
 
     var body: some View {
-        ZStack {
-            ForEach(0..<6, id: \.self) { index in
-                Circle()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(width: 2.2, height: 2.2)
-                    .offset(y: trailUp ? -8 - CGFloat(index) * 7 : 12)
-                    .scaleEffect(trailUp ? 1 : 0.35)
-                    .opacity(trailUp && !burst ? 1 : 0)
-                    .animation(
-                        .easeOut(duration: 0.24).delay(Double(index) * 0.014),
-                        value: trailUp
-                    )
-                    .animation(.easeOut(duration: 0.12), value: burst)
-            }
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !isRunning)) { timeline in
+            Canvas { context, _ in
+                guard let launchDate else { return }
+                let elapsed = timeline.date.timeIntervalSince(launchDate)
+                guard elapsed <= launchDuration + bloomDuration else { return }
 
-            ForEach(burstPieces.indices, id: \.self) { index in
-                let piece = burstPieces[index]
-                Capsule()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(width: 2.3, height: piece.length)
-                    .rotationEffect(.degrees(burst ? piece.rotation : 0))
-                    .offset(
-                        x: burst ? piece.x : 0,
-                        y: burst ? piece.y : -46
-                    )
-                    .scaleEffect(burst ? 1 : 0.15)
-                    .opacity(burst ? 1 : 0)
-                    .animation(
-                        .easeOut(duration: 0.38).delay(Double(index) * 0.012),
-                        value: burst
-                    )
+                drawLaunchTrail(in: context, elapsed: elapsed)
+                if elapsed > launchDuration {
+                    drawLottieBloom(in: context, elapsed: elapsed - launchDuration)
+                }
             }
-
-            Circle()
-                .stroke(Color.white.opacity(burst ? 0.42 : 0), lineWidth: 1)
-                .frame(width: burst ? 34 : 4, height: burst ? 34 : 4)
-                .offset(y: -66)
-                .opacity(burst ? 0.5 : 0)
-                .animation(.easeOut(duration: 0.42), value: burst)
+            .frame(width: canvasSize, height: canvasSize)
         }
         .frame(width: 34, height: 34)
+        .allowsHitTesting(false)
         .onAppear {
             if active {
-                launchFirework()
+                launch()
             }
         }
         .onChange(of: active) { _, newValue in
             if newValue {
-                launchFirework()
+                launch()
             } else {
-                resetFirework()
+                reset()
             }
         }
     }
 
-    private func launchFirework() {
-        resetFirework()
-        DispatchQueue.main.async {
-            trailUp = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
-                burst = true
-            }
+    private func launch() {
+        launchDate = Date()
+        isRunning = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + launchDuration + bloomDuration + 0.06) {
+            reset()
         }
     }
 
-    private func resetFirework() {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            trailUp = false
-            burst = false
+    private func reset() {
+        isRunning = false
+        launchDate = nil
+    }
+
+    private func drawLaunchTrail(in context: GraphicsContext, elapsed: TimeInterval) {
+        let progress = min(max(CGFloat(elapsed / launchDuration), 0), 1)
+        let currentY = launchStartY - (launchStartY - bloomY) * progress
+        let fade = 1 - max(0, progress - 0.86) / 0.14
+
+        for index in 0..<6 {
+            let y = currentY + CGFloat(index) * 9
+            guard y <= launchStartY + 2, y >= bloomY - 2 else { continue }
+            let opacity = max(0, 0.9 - Double(index) * 0.14) * Double(fade)
+            context.fill(
+                Path(ellipseIn: CGRect(x: centerX - 1.1, y: y - 1.1, width: 2.2, height: 2.2)),
+                with: .color(primaryColor.opacity(opacity))
+            )
         }
+    }
+
+    private func drawLottieBloom(in context: GraphicsContext, elapsed: TimeInterval) {
+        let frame = min(max(CGFloat(elapsed / bloomDuration) * AppleBloomLottieAsset.endFrame, 0), AppleBloomLottieAsset.endFrame)
+        let center = CGPoint(x: centerX, y: bloomY)
+
+        let flashScale = interpolated(frame: frame, points: [(0, 20), (8, 170), (14, 60)])
+        let flashOpacity = interpolated(frame: frame, points: [(0, 0), (3, 0.34), (14, 0)])
+        if flashOpacity > 0 {
+            let diameter = 8 * flashScale / 100
+            context.fill(
+                Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)),
+                with: .color(secondaryColor.opacity(Double(flashOpacity)))
+            )
+        }
+
+        for (index, rotation) in AppleBloomLottieAsset.particleRotations.enumerated() {
+            let delay = CGFloat(AppleBloomLottieAsset.particleDelays[index % AppleBloomLottieAsset.particleDelays.count])
+            let localFrame = max(0, frame - delay)
+            let distance = interpolated(frame: localFrame, points: [(0, 0), (18, 50.6), (54, 92)]) * 0.28
+            let scale = interpolated(frame: localFrame, points: [(0, 15), (16, 100), (44, 88), (54, 72)])
+            let opacity = interpolated(frame: localFrame, points: [(0, 0), (4, 0.78), (34, 0.78), (54, 0)])
+            guard opacity > 0 else { continue }
+
+            let angle = rotation * .pi / 180
+            let point = CGPoint(x: center.x + cos(angle) * distance, y: center.y + sin(angle) * distance)
+            let diameter = 4.2 * scale / 100
+            let particleColor = index.isMultiple(of: 2) ? primaryColor : secondaryColor
+
+            context.fill(
+                Path(ellipseIn: CGRect(x: point.x - diameter * 1.2, y: point.y - diameter * 1.2, width: diameter * 2.4, height: diameter * 2.4)),
+                with: .color(particleColor.opacity(Double(opacity) * 0.1))
+            )
+            context.fill(
+                Path(ellipseIn: CGRect(x: point.x - diameter / 2, y: point.y - diameter / 2, width: diameter, height: diameter)),
+                with: .color(particleColor.opacity(Double(opacity)))
+            )
+        }
+    }
+
+    private func interpolated(frame: CGFloat, points: [(CGFloat, CGFloat)]) -> CGFloat {
+        guard let first = points.first else { return 0 }
+        guard frame > first.0 else { return first.1 }
+        for index in 0..<(points.count - 1) {
+            let start = points[index]
+            let end = points[index + 1]
+            if frame <= end.0 {
+                let raw = (frame - start.0) / max(end.0 - start.0, 0.001)
+                let eased = raw * raw * (3 - 2 * raw)
+                return start.1 + (end.1 - start.1) * eased
+            }
+        }
+        return points.last?.1 ?? first.1
+    }
+}
+
+private enum AppleBloomLottieAsset {
+    static let endFrame: CGFloat = 60
+    static let particleDelays: [Int] = [0, 1, 0, 2, 1, 0, 2, 1, 0, 2, 1, 0]
+    static let particleRotations: [CGFloat] = loadParticleRotations()
+
+    private static func loadParticleRotations() -> [CGFloat] {
+        guard
+            let url = Bundle.main.url(forResource: "apple_fuller_bloom_firework", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let layers = object["layers"] as? [[String: Any]]
+        else {
+            return stride(from: 0, to: 360, by: 30).map(CGFloat.init)
+        }
+
+        let rotations = layers.compactMap { layer -> CGFloat? in
+            guard (layer["nm"] as? String)?.hasPrefix("Particle") == true,
+                  let ks = layer["ks"] as? [String: Any],
+                  let rotation = ks["r"] as? [String: Any] else {
+                return nil
+            }
+            if let value = rotation["k"] as? Double {
+                return CGFloat(value)
+            }
+            if let value = rotation["k"] as? Int {
+                return CGFloat(value)
+            }
+            return nil
+        }
+
+        return rotations.isEmpty ? stride(from: 0, to: 360, by: 30).map(CGFloat.init) : rotations
     }
 }
 

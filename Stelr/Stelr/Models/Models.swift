@@ -12,11 +12,11 @@ enum VibeOption: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .mustWatch:   return "Supernova"
-        case .goingGood:   return "Flaring"
-        case .justOk:      return "Kindling"
-        case .superBoring: return "Dark Star"
-        case .notWatching: return "Not Watching"
+        case .mustWatch:   return "must watch"
+        case .goingGood:   return "cool"
+        case .justOk:      return "meh"
+        case .superBoring: return "boring"
+        case .notWatching: return "not watching"
         }
     }
     var emoji: String {
@@ -24,7 +24,7 @@ enum VibeOption: String, Codable, CaseIterable, Identifiable {
         case .mustWatch:   return "✨"
         case .goingGood:   return "🌟"
         case .justOk:      return "🔥"
-        case .superBoring: return "🌑"
+        case .superBoring: return "💤"
         case .notWatching: return "💤"
         }
     }
