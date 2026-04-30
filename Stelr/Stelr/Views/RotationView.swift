@@ -204,11 +204,8 @@ private struct MyShowRow: View {
                     }
                     Spacer()
                     if myShow.currentEpisode >= myShow.totalEpisodes {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("season finished")
-                        }
-                        .font(.system(size: 10.8, weight: .medium))
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13.2, weight: .medium))
                         .foregroundColor(Color(hex: "72c97e"))
                         .padding(.trailing, 2)
                     }
@@ -374,10 +371,10 @@ private struct SeasonFinishFireworkView: View {
 
     private let launchDuration: TimeInterval = 0.24
     private let bloomDuration: TimeInterval = 0.68
-    private let canvasSize: CGFloat = 132
-    private let centerX: CGFloat = 66
-    private let launchStartY: CGFloat = 102
-    private let bloomY: CGFloat = 40
+    private let canvasSize: CGFloat = 168
+    private let centerX: CGFloat = 84
+    private let launchStartY: CGFloat = 84
+    private let bloomY: CGFloat = 36
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 60, paused: !isRunning)) { timeline in
