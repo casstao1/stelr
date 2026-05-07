@@ -2237,26 +2237,33 @@ private struct ActiveStarWatchingBubble: View {
         Group {
             if !friends.isEmpty {
                 VStack(spacing: 0) {
+                    // Bubble pill
                     FriendStackView(friends: friends, maxVisible: 4, avatarSize: 20)
-                        .padding(.horizontal, 8)
-                        .frame(height: 28)
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(Color.black.opacity(0.62))
-                                .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+                                .fill(Color.black.opacity(0.55))
+                                .background(.regularMaterial, in: Capsule(style: .continuous))
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 0.7)
+                                .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
                         )
-                        .shadow(color: .black.opacity(0.55), radius: 12, y: 6)
+                        .shadow(color: .black.opacity(0.60), radius: 10, y: 4)
 
-                    TrianglePointer()
-                        .fill(Color.black.opacity(0.62))
-                        .frame(width: 10, height: 6)
+                    // Callout arrow pointing down toward the star
+                    CalloutArrow()
+                        .fill(Color.black.opacity(0.55))
+                        .frame(width: 12, height: 7)
+                        .overlay(
+                            // Matching border on the arrow edges
+                            CalloutArrow()
+                                .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                        )
                         .padding(.top, -1)
                 }
-                .transition(.scale(scale: 0.86, anchor: .bottom).combined(with: .opacity))
+                .transition(.scale(scale: 0.82, anchor: .bottom).combined(with: .opacity))
             }
         }
         .allowsHitTesting(true)
@@ -2264,12 +2271,27 @@ private struct ActiveStarWatchingBubble: View {
     }
 }
 
-private struct TrianglePointer: Shape {
+/// Smooth callout arrow — slightly rounded tip, like the Apple Maps location bubble pointer.
+private struct CalloutArrow: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        let tipX = rect.midX
+        let tipY = rect.maxY
+        let baseY = rect.minY
+        let baseLeft = rect.minX
+        let baseRight = rect.maxX
+        let corner: CGFloat = 2.0
+
+        path.move(to: CGPoint(x: baseLeft + corner, y: baseY))
+        path.addLine(to: CGPoint(x: baseRight - corner, y: baseY))
+        path.addQuadCurve(
+            to: CGPoint(x: tipX, y: tipY),
+            control: CGPoint(x: baseRight * 0.72, y: baseY + (tipY - baseY) * 0.4)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: baseLeft + corner, y: baseY),
+            control: CGPoint(x: baseLeft * 0.28 + tipX * 0.72, y: baseY + (tipY - baseY) * 0.4)
+        )
         path.closeSubpath()
         return path
     }
@@ -2424,21 +2446,29 @@ private struct DetailPill: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(alignment: .top, spacing: 8) {
                             Text(show.title)
-                                .font(StelrTypography.cardTitle)
+                                .font(.system(size: 22, weight: .bold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.76)
 
                             Spacer(minLength: 6)
 
-                            FriendStackView(friends: watchers, avatarSize: 18)
-                                .fixedSize()
-                                .padding(.top, 1)
+                            Button(action: onDismiss) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.65))
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.white.opacity(0.10))
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.white.opacity(0.10), lineWidth: 0.6))
+                            }
+                            .padding(.top, 2)
                         }
-                        .padding(.bottom, 7)
+                        .padding(.bottom, 5)
 
                         Text(metaLineText)
-                            .font(StelrTypography.metadata)
+                            .font(.system(size: 13.5, weight: .regular))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .padding(.bottom, 7)
@@ -2459,36 +2489,40 @@ private struct DetailPill: View {
                         Text("View")
                             .font(StelrTypography.button)
                             .tracking(0.2)
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundColor(.white.opacity(0.92))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(Color.white.opacity(0.06))
+                            .frame(height: 44)
+                            .background(Color.white.opacity(0.09))
                             .background(.ultraThinMaterial)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 0.7)
+                                    .stroke(Color.white.opacity(0.13), lineWidth: 0.7)
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.stelrPress)
 
                     Button(action: onCheckIn) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 7) {
                             StelrFourPointStar(variant: .twinkle)
-                                .fill(.white)
-                                .frame(width: 12, height: 12)
-                            Text("Check in")
+                                .fill(Color.white.opacity(0.88))
+                                .frame(width: 11, height: 11)
+                            Text("Vibe check")
                                 .font(StelrTypography.button)
                         }
-                        .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(Color.stelrAccent)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .shadow(color: Color.stelrAccent.opacity(0.22), radius: 10, y: 5)
+                        .foregroundColor(.white.opacity(0.92))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.white.opacity(0.13))
+                        .background(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.16), lineWidth: 0.7)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.stelrPress)
-                    .accessibilityLabel("Check in")
+                    .accessibilityLabel("Vibe check")
                 }
             }
         }
@@ -2555,9 +2589,9 @@ private struct DetailPill: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.065),
-                                Color(hex: "121421").opacity(0.50),
-                                Color(hex: "080A13").opacity(0.72)
+                                Color.white.opacity(0.045),
+                                Color(hex: "121421").opacity(0.30),
+                                Color(hex: "080A13").opacity(0.45)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -2569,13 +2603,13 @@ private struct DetailPill: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color.white.opacity(0.075),
-                                Color.white.opacity(0.024),
+                                Color.white.opacity(0.10),
+                                Color.white.opacity(0.032),
                                 .clear
                             ],
                             center: .topLeading,
                             startRadius: 0,
-                            endRadius: 260
+                            endRadius: 240
                         )
                     )
                     .blendMode(.screen)
@@ -2585,20 +2619,20 @@ private struct DetailPill: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(hex: show.accentColor).opacity(0.055),
-                                Color(hex: show.accentColor).opacity(0.018),
+                                Color(hex: show.accentColor).opacity(0.08),
+                                Color(hex: show.accentColor).opacity(0.025),
                                 .clear
                             ],
                             center: .bottomLeading,
                             startRadius: 12,
-                            endRadius: 320
+                            endRadius: 300
                         )
                     )
                     .blendMode(.screen)
             )
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(hex: "11121E").opacity(0.55))
+                    .fill(Color(hex: "11121E").opacity(0.38))
                     .blur(radius: 14)
             )
     }
