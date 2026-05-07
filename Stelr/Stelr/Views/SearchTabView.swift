@@ -3,9 +3,17 @@ import SwiftUI
 // Full-screen Search tab with "shows" and "friends" sub-tabs.
 
 struct SearchTabView: View {
+    var animateEntrance: Bool = true
+    var animationToken: Int = 0
+    var focusToken: Int = 0
+    @Binding var isKeyboardVisible: Bool
+
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var isSearchFocused: Bool
 
     @State private var selectedTab: SearchSubTab = .shows
+    @State private var contentAppeared = false
 
     // Shows sub-tab state
     @State private var showQuery        = ""
@@ -14,27 +22,26 @@ struct SearchTabView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var addedIds: Set<Int> = []
     @State private var detailShow: Show?
+    @State private var profileFriend: Friend?
 
     // Friends sub-tab state
     @State private var friendQuery = ""
+    @State private var debouncedFriendQuery = ""
 
     enum SearchSubTab { case shows, friends }
 
     var body: some View {
         ZStack {
-            Color.stelrBg.ignoresSafeArea()
-
             VStack(spacing: 0) {
                 // ── Header ────────────────────────────────────────────────────
                 VStack(alignment: .leading, spacing: 2) {
                     Text("search")
-                        .font(.custom("Georgia", size: 31.4).weight(.semibold))
+                        .font(StelrTypography.pageTitle)
                         .foregroundColor(.stelrText)
-                    Text(selectedTab == .shows ? "find shows · add to your list" : "find friends · see what they're watching")
-                        .font(.system(size: 12.8)).foregroundColor(.stelrMuted)
-                        .animation(.easeInOut(duration: 0.18), value: selectedTab)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { dismissSearchFocus() }
                 .padding(.horizontal, 20).padding(.top, 66).padding(.bottom, 14)
 
                 // ── Sub-tab switcher ──────────────────────────────────────────
@@ -42,7 +49,8 @@ struct SearchTabView: View {
                     ForEach([SearchSubTab.shows, SearchSubTab.friends], id: \.self) { tab in
                         let isSelected = selectedTab == tab
                         Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            dismissSearchFocus()
+                            StelrHaptics.selection()
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
                                 selectedTab = tab
                             }
@@ -83,7 +91,7 @@ struct SearchTabView: View {
                         .tint(.stelrAccent)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .id(selectedTab) // resets field on tab switch
+                        .focused($isSearchFocused)
                     if !activeQuery.isEmpty {
                         Button { clearActiveQuery() } label: {
                             Image(systemName: "xmark.circle.fill")
@@ -116,12 +124,43 @@ struct SearchTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(.easeInOut(duration: 0.18), value: selectedTab)
             }
+            .opacity(contentAppeared ? 1 : 0)
+            .offset(y: contentAppeared ? 0 : 32)
+            .animation(.spring(response: 0.46, dampingFraction: 0.82), value: contentAppeared)
         }
         .sheet(item: $detailShow) { show in
             ShowDetailView(show: show, watchingFriends: appState.friendsWatching(showId: show.id))
         }
+        .sheet(item: $profileFriend) { friend in
+            FriendProfileSheet(friend: friend)
+        }
         .onChange(of: showQuery) { _, newVal in
             scheduleSearch(query: newVal)
+        }
+        .onAppear {
+            runEntranceAnimation()
+            focusSearchField()
+        }
+        .onDisappear {
+            dismissSearchFocus()
+            isKeyboardVisible = false
+        }
+        .onChange(of: animationToken) { _, _ in
+            runEntranceAnimation()
+        }
+        .onChange(of: focusToken) { _, _ in
+            focusSearchField()
+        }
+        .onChange(of: isSearchFocused) { _, focused in
+            isKeyboardVisible = focused
+        }
+        .task(id: friendQuery) {
+            // Debounce friend filter: wait 200ms after last keystroke before filtering
+            let query = friendQuery
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            guard debouncedFriendQuery != query else { return }
+            debouncedFriendQuery = query
         }
     }
 
@@ -141,6 +180,34 @@ struct SearchTabView: View {
 
     private func clearActiveQuery() {
         if selectedTab == .shows { showQuery = "" } else { friendQuery = "" }
+    }
+
+    private func dismissSearchFocus() {
+        guard isSearchFocused else { return }
+        isSearchFocused = false
+    }
+
+    private func focusSearchField() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            isSearchFocused = true
+        }
+    }
+
+    private func runEntranceAnimation() {
+        contentAppeared = false
+        if animateEntrance && !reduceMotion {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.82)) {
+                    contentAppeared = true
+                }
+            }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                contentAppeared = true
+            }
+        }
     }
 
     // ── Shows body ────────────────────────────────────────────────────────────
@@ -164,17 +231,23 @@ struct SearchTabView: View {
                 ForEach(showResults) { show in
                     let alreadyAdded = appState.myShows.contains(where: { $0.showId == show.id })
                     let justAdded    = addedIds.contains(show.id)
-                    ShowSearchResultRow(show: show, isAdded: alreadyAdded || justAdded) {
-                        withAnimation(.spring(response: 0.3)) {
-                            appState.addShowToRotation(show)
-                            addedIds.insert(show.id)
+                    ShowSearchResultRow(
+                        show: show,
+                        isAdded: alreadyAdded || justAdded,
+                        onOpen: { detailShow = show },
+                        onAdd: {
+                            withAnimation(.spring(response: 0.3)) {
+                                appState.addShowToRotation(show)
+                                addedIds.insert(show.id)
+                            }
                         }
-                    }
+                    )
                     Divider().background(Color.stelrBorder).padding(.horizontal, 18)
                 }
             }
             .padding(.bottom, 96)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var showsLoadingView: some View {
@@ -183,27 +256,31 @@ struct SearchTabView: View {
             Text("searching…").font(.system(size: 13.4)).foregroundColor(.stelrMuted)
         }
         .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { dismissSearchFocus() }
     }
 
     private var showsEmptyView: some View {
         VStack(spacing: 12) {
-            Text("📺").font(.system(size: 50.2))
-            Text("no results for "\(showQuery)"")
-                .font(.custom("Georgia", size: 16.8)).italic().foregroundColor(.stelrMuted)
+            Text("📺").font(.system(size: 38))
+            Text("no results for \"\(showQuery)\"")
+                .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrMuted)
             Text("try another title or check spelling")
                 .font(.system(size: 12.3)).foregroundColor(.stelrMuted.opacity(0.7))
         }
         .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { dismissSearchFocus() }
     }
 
     private var showsPromptView: some View {
         VStack(spacing: 24) {
             Image(systemName: "tv")
-                .font(.system(size: 44, weight: .ultraLight))
+                .font(.system(size: 32, weight: .ultraLight))
                 .foregroundColor(.stelrMuted)
             VStack(spacing: 6) {
                 Text("find your next watch")
-                    .font(.custom("Georgia", size: 18.4)).italic().foregroundColor(.stelrText)
+                    .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrText)
                 Text("search any show to add it to your list")
                     .font(.system(size: 13.4)).foregroundColor(.stelrMuted)
             }
@@ -238,6 +315,8 @@ struct SearchTabView: View {
         }
         .frame(maxHeight: .infinity)
         .padding(.horizontal, 20)
+        .contentShape(Rectangle())
+        .onTapGesture { dismissSearchFocus() }
     }
 
     // ── Friends body ──────────────────────────────────────────────────────────
@@ -245,7 +324,7 @@ struct SearchTabView: View {
     @ViewBuilder
     private var friendsBody: some View {
         let filtered = filteredFriends
-        if !friendQuery.isEmpty && filtered.isEmpty {
+        if !debouncedFriendQuery.isEmpty && filtered.isEmpty {
             friendsEmptyView
         } else {
             friendsList(filtered)
@@ -253,11 +332,17 @@ struct SearchTabView: View {
     }
 
     private var filteredFriends: [Friend] {
-        let term = friendQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !term.isEmpty else { return appState.friends }
-        return appState.friends.filter { friend in
-            let showTitles = friend.watchedShowIds
-                .compactMap { appState.show(for: $0)?.title.lowercased() }
+        let term = debouncedFriendQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let people = appState.searchableFriends
+        guard !term.isEmpty else { return people }
+        // Pre-build a show title lookup once per filter run (O(n) instead of O(n²))
+        let showTitleMap = appState.shows.reduce(into: [Int: String]()) { result, show in
+            if result[show.id] == nil {
+                result[show.id] = show.title.lowercased()
+            }
+        }
+        return people.filter { friend in
+            let showTitles = friend.watchedShowIds.compactMap { showTitleMap[$0] }
             return friend.name.lowercased().contains(term)
                 || friend.username.lowercased().contains(term)
                 || "@\(friend.username)".lowercased().contains(term)
@@ -272,11 +357,11 @@ struct SearchTabView: View {
             if friends.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "person.2")
-                        .font(.system(size: 44, weight: .ultraLight))
+                        .font(.system(size: 32, weight: .ultraLight))
                         .foregroundColor(.stelrMuted)
                     VStack(spacing: 6) {
                         Text("find your people")
-                            .font(.custom("Georgia", size: 18.4)).italic().foregroundColor(.stelrText)
+                            .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrText)
                         Text("search by name, username, or a show they watch")
                             .font(.system(size: 13.4)).foregroundColor(.stelrMuted)
                             .multilineTextAlignment(.center)
@@ -288,10 +373,16 @@ struct SearchTabView: View {
             } else {
                 LazyVStack(spacing: 10) {
                     ForEach(friends) { friend in
-                        FriendSearchResultRow(
-                            friend: friend,
-                            shows: friend.watchedShowIds.compactMap { appState.show(for: $0) }
-                        )
+                        Button {
+                            StelrHaptics.lightTap()
+                            profileFriend = friend
+                        } label: {
+                            FriendSearchResultRow(
+                                friend: friend,
+                                shows: friend.watchedShowIds.compactMap { appState.show(for: $0) }
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -299,19 +390,22 @@ struct SearchTabView: View {
                 .padding(.bottom, 96)
             }
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var friendsEmptyView: some View {
         VStack(spacing: 12) {
-            Text("🔭").font(.system(size: 50.2))
-            Text("nobody found for "\(friendQuery)"")
-                .font(.custom("Georgia", size: 16.8)).italic().foregroundColor(.stelrMuted)
+            Text("🔭").font(.system(size: 38))
+            Text("nobody found for \"\(debouncedFriendQuery)\"")
+                .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrMuted)
             Text("try a name, @username, or a show they watch")
                 .font(.system(size: 12.3)).foregroundColor(.stelrMuted.opacity(0.7))
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 32)
         .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { dismissSearchFocus() }
     }
 
     // ── Show search logic ─────────────────────────────────────────────────────
@@ -324,7 +418,7 @@ struct SearchTabView: View {
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run { isSearching = true }
-            let found = await appState.searchTVMaze(query: trimmed)
+            let found = await appState.searchShows(query: trimmed)
             guard !Task.isCancelled else { return }
             await MainActor.run { showResults = found; isSearching = false }
         }
@@ -336,43 +430,52 @@ struct SearchTabView: View {
 private struct ShowSearchResultRow: View {
     let show: Show
     let isAdded: Bool
+    var onOpen: () -> Void
     var onAdd: () -> Void
 
     @State private var tapped = false
 
     var body: some View {
         HStack(spacing: 13) {
-            ShowPosterView(show: show, width: 50, height: 70, radius: 9) {
-                VStack {
-                    Spacer()
-                    if let genre = show.genre?.components(separatedBy: " · ").first {
-                        Text(genre)
-                            .font(.system(size: 8.4, weight: .medium))
-                            .foregroundColor(.white.opacity(0.75))
-                            .padding(.horizontal, 4).padding(.vertical, 2)
-                            .background(Color.black.opacity(0.45))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .padding(5)
+            Button {
+                StelrHaptics.lightTap()
+                onOpen()
+            } label: {
+                HStack(spacing: 13) {
+                    ShowPosterView(show: show, width: 50, height: 70, radius: 9) {
+                        VStack {
+                            Spacer()
+                            if let genre = show.genre?.components(separatedBy: " · ").first {
+                                Text(genre)
+                                    .font(.system(size: 8.4, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.75))
+                                    .padding(.horizontal, 4).padding(.vertical, 2)
+                                    .background(Color.black.opacity(0.45))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .padding(5)
+                            }
+                        }
                     }
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(show.title)
+                            .font(StelrTypography.sectionTitle).foregroundColor(.stelrText).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(show.platform).font(.system(size: 12.3)).foregroundColor(.stelrMuted)
+                            if let yr = show.year {
+                                Text("·").foregroundColor(.stelrBorder)
+                                Text(String(yr)).font(.system(size: 12.3)).foregroundColor(.stelrMuted)
+                            }
+                        }
+                        if let genre = show.genre {
+                            Text(genre).font(.system(size: 11.8)).foregroundColor(.stelrMuted.opacity(0.7)).lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
                 }
             }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(show.title)
-                    .font(.custom("Georgia", size: 17.4)).foregroundColor(.stelrText).lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(show.platform).font(.system(size: 12.3)).foregroundColor(.stelrMuted)
-                    if let yr = show.year {
-                        Text("·").foregroundColor(.stelrBorder)
-                        Text(String(yr)).font(.system(size: 12.3)).foregroundColor(.stelrMuted)
-                    }
-                }
-                if let genre = show.genre {
-                    Text(genre).font(.system(size: 11.8)).foregroundColor(.stelrMuted.opacity(0.7)).lineLimit(1)
-                }
-            }
-
-            Spacer()
+            .buttonStyle(.stelrPress)
 
             Button {
                 guard !isAdded else { return }
@@ -413,9 +516,13 @@ private struct FriendSearchResultRow: View {
         return shows.count == 1 ? first.title : "\(first.title) + \(shows.count - 1) more"
     }
 
+    private var ratingColor: Color {
+        H7bStarVisualStyle.ratingColor(appScore: friend.score)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(initials: friend.initials, hexColor: friend.hexColor, size: 44)
+            AvatarView(initials: friend.initials, hexColor: friend.hexColor, imageURL: friend.imageURL, size: 38)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(friend.name)
@@ -428,7 +535,7 @@ private struct FriendSearchResultRow: View {
                     Text(showLabel).lineLimit(1)
                     Text("·").foregroundColor(.stelrMuted.opacity(0.45))
                     Text("\(friend.vibe.emoji) \(friend.vibe.label)")
-                        .foregroundColor(Color(hex: friend.vibe.hexColor))
+                        .foregroundColor(ratingColor)
                 }
                 .font(.system(size: 13.4))
                 .foregroundColor(.stelrMuted)

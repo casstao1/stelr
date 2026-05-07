@@ -14,10 +14,13 @@ struct HomeView: View {
     private var hero: Friend { appState.friends[heroIdx] }
     private var heroShow: Show { appState.show(for: hero.currentShowId) ?? Show.samples[0] }
     private var vibeOpt: VibeOption { hero.vibe }
+    private var heroRatingColor: Color {
+        H7bStarVisualStyle.ratingColor(appScore: hero.score)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Color.stelrBg.ignoresSafeArea()
+            StelrStarFieldBackground().ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -25,13 +28,13 @@ struct HomeView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("stelr")
-                                .font(.custom("Georgia", size: 26.9).weight(.semibold))
+                                .font(StelrTypography.pageTitle)
                                 .foregroundColor(.stelrText)
                             Text("what your people are watching")
                                 .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
                         }
                         Spacer()
-                        Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); showLiveFeed = true } label: {
+                        Button { StelrHaptics.lightTap(); showLiveFeed = true } label: {
                             ZStack(alignment: .topTrailing) {
                                 Circle().fill(Color.white.opacity(0.06))
                                     .overlay(Circle().stroke(Color.stelrBorder, lineWidth: 0.5))
@@ -52,16 +55,16 @@ struct HomeView: View {
                         HStack(spacing: 16) {
                             ForEach(Array(appState.friends.enumerated()), id: \.element.id) { idx, friend in
                                 Button {
-                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    StelrHaptics.selection()
                                     withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                                         heroIdx = idx
                                     }
                                 } label: {
                                     VStack(spacing: 5) {
-                                        AvatarView(initials: friend.initials, hexColor: friend.hexColor, size: 38,
+                                        AvatarView(initials: friend.initials, hexColor: friend.hexColor, imageURL: friend.imageURL, size: 38,
                                                    showBorder: idx == heroIdx)
                                             .padding(2)
-                                            .overlay(Circle().stroke(idx == heroIdx ? Color(hex: friend.hexColor) : .clear, lineWidth: 2))
+                                            .overlay(Circle().stroke(idx == heroIdx ? Color.white.opacity(0.18) : .clear, lineWidth: 1))
                                         Text(friend.name)
                                             .font(.system(size: 11.2))
                                             .foregroundColor(idx == heroIdx ? .stelrText : .stelrMuted)
@@ -84,7 +87,7 @@ struct HomeView: View {
                                 HStack(alignment: .center, spacing: 9) {
                                     Button { profileFriend = hero } label: {
                                         HStack(spacing: 9) {
-                                            AvatarView(initials: hero.initials, hexColor: hero.hexColor, size: 30)
+                                            AvatarView(initials: hero.initials, hexColor: hero.hexColor, imageURL: hero.imageURL, size: 30)
                                             VStack(alignment: .leading, spacing: 1) {
                                                 Text(hero.name)
                                                     .font(.system(size: 14.0, weight: .medium))
@@ -99,10 +102,10 @@ struct HomeView: View {
                                     Spacer()
                                     Text("\(vibeOpt.emoji) \(vibeOpt.label)")
                                         .font(.system(size: 12.3))
-                                        .foregroundColor(Color(hex: vibeOpt.hexColor))
+                                        .foregroundColor(heroRatingColor)
                                         .padding(.horizontal, 10).padding(.vertical, 4)
-                                        .background(Color(hex: vibeOpt.hexColor).opacity(0.13))
-                                        .overlay(Capsule().stroke(Color(hex: vibeOpt.hexColor).opacity(0.34), lineWidth: 1))
+                                        .background(heroRatingColor.opacity(0.13))
+                                        .overlay(Capsule().stroke(heroRatingColor.opacity(0.34), lineWidth: 1))
                                         .clipShape(Capsule())
                                 }
                                 Spacer()
@@ -112,10 +115,10 @@ struct HomeView: View {
                                         .fill(Color(hex: heroShow.accentColor))
                                         .frame(width: 24, height: 2).cornerRadius(1)
                                     Text(heroShow.title)
-                                        .font(.custom("Georgia", size: 24.6)).foregroundColor(.white)
+                                        .font(StelrTypography.sectionTitle).foregroundColor(.white)
                                         .shadow(color: .black.opacity(0.6), radius: 7, y: 2)
                                     HStack(alignment: .center, spacing: 0) {
-                                        VibeWaveView(vibe: hero.vibe, size: 22, animate: true)
+                                        VibeWaveView(vibe: hero.vibe, score: hero.score, size: 22, animate: true)
                                         Spacer(minLength: 8)
                                         HStack(spacing: 7) {
                                             pillButton("dot.radiowaves.left.and.right", label: "rally") { showRally = true }
@@ -156,7 +159,7 @@ struct HomeView: View {
                                         MiniShowCard(
                                             show: s, friend: friend,
                                             onSelect: {
-                                                UISelectionFeedbackGenerator().selectionChanged()
+                                                StelrHaptics.selection()
                                                 withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                                                     heroIdx = appState.friends.firstIndex(where: { $0.id == friend.id }) ?? heroIdx
                                                 }
@@ -177,8 +180,10 @@ struct HomeView: View {
             .ignoresSafeArea(edges: .top)
         }
         .sheet(isPresented: $showVibeSheet) {
-            VibeCheckSheet(show: heroShow, currentVibe: hero.vibe) { opt in
-                appState.updateVibeForFriend(friendId: hero.id, vibe: opt)
+            VibeCheckSheet(show: heroShow, currentMyShow: nil) { _, _, score in
+                appState.updateVibeForFriend(friendId: hero.id, vibe: VibeOption.from(score: score))
+            } onSeasonRating: { season, rating in
+                appState.submitSeasonRating(showId: heroShow.id, season: season, score: rating)
             }
         }
         .sheet(isPresented: $showRally) {
@@ -200,7 +205,7 @@ struct HomeView: View {
 
     private func pillButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            StelrHaptics.lightTap()
             action()
         } label: {
             HStack(spacing: 5) {
@@ -231,7 +236,7 @@ private struct MiniShowCard: View {
                 LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
                 VStack {
                     HStack {
-                        AvatarView(initials: friend.initials, hexColor: friend.hexColor, size: 22)
+                        AvatarView(initials: friend.initials, hexColor: friend.hexColor, imageURL: friend.imageURL, size: 22)
                         Spacer()
                         Text(friend.vibe.emoji).font(.system(size: 16.4))
                     }

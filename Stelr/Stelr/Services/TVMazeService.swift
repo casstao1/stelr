@@ -33,16 +33,39 @@ actor TVMazeService {
         return try decoder.decode([TVMazeCastMember].self, from: data)
     }
 
+    func getEpisodes(showId: Int) async throws -> [TVMazeEpisode] {
+        guard let url = URL(string: "\(base)/shows/\(showId)/episodes") else { return [] }
+        let (data, _) = try await URLSession.shared.data(from: url)
+        return try decoder.decode([TVMazeEpisode].self, from: data)
+    }
+
     // Enrich a Show model with live TVMaze data
     func enrichShow(_ show: inout Show) async {
         guard let tvmazeId = show.tvmazeId else { return }
         do {
             let tvShow = try await getShow(id: tvmazeId)
             let cast = try await getCast(showId: tvmazeId)
+            let episodes = try await getEpisodes(showId: tvmazeId)
+            let apiImageURL = tvShow.image?.original ?? tvShow.image?.medium
+            show.detailMetadata = ShowDetailMetadata.fromTVMaze(tvShow)
             show.summary = tvShow.summary?.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            show.imageURL = tvShow.image?.original ?? tvShow.image?.medium
+            if show.metadataSource != .sample || show.imageURL == nil {
+                show.imageURL = apiImageURL
+            }
+            show.previewImageURL = show.previewImageURL ?? apiImageURL ?? show.imageURL
+            show.imageURL = show.imageURL ?? show.previewImageURL
             show.genre = tvShow.genres?.prefix(2).joined(separator: " · ")
             show.year = tvShow.premiered.flatMap { Int($0.prefix(4)) }
+            show.globalRating = tvShow.rating?.average
+            if !episodes.isEmpty {
+                let seasonCounts = Dictionary(grouping: episodes, by: \.season)
+                    .mapValues { seasonEpisodes in
+                        seasonEpisodes.compactMap(\.number).max() ?? seasonEpisodes.count
+                    }
+                show.episodeCountsBySeason = seasonCounts
+                show.seasons = seasonCounts.keys.max()
+                show.totalEpisodes = episodes.count
+            }
             let castMembers = cast.prefix(6).map { member in
                 CastMember(
                     name: member.person.name,
@@ -57,5 +80,75 @@ actor TVMazeService {
         } catch {
             // Silently use static data if TVMaze is unavailable
         }
+    }
+}
+
+actor AniListService {
+    static let shared = AniListService()
+    private let endpoint = AppConfig.anilistGraphQLEndpoint
+    private let decoder = JSONDecoder()
+
+    func searchAnime(query: String) async throws -> [AniListMedia] {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "query": """
+                query ($search: String) {
+                  Page(page: 1, perPage: 8) {
+                    media(search: $search, type: ANIME, isAdult: false) {
+                      id
+                      idMal
+                      title {
+                        romaji
+                        english
+                        native
+                      }
+                      description(asHtml: false)
+                      seasonYear
+                      episodes
+                      averageScore
+                      genres
+                      duration
+                      season
+                      source
+                      siteUrl
+                      countryOfOrigin
+                      startDate {
+                        year
+                        month
+                        day
+                      }
+                      endDate {
+                        year
+                        month
+                        day
+                      }
+                      studios(isMain: true) {
+                        nodes {
+                          name
+                        }
+                      }
+                      coverImage {
+                        extraLarge
+                        large
+                        medium
+                      }
+                      status
+                      format
+                    }
+                  }
+                }
+                """,
+                "variables": [
+                    "search": query
+                ]
+            ]
+        )
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try decoder.decode(AniListGraphQLResponse<AniListPageData>.self, from: data)
+        return response.data?.Page.media ?? []
     }
 }

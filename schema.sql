@@ -124,7 +124,91 @@ alter table public.rallies enable row level security;
 create policy "Anyone can view rallies" on rallies for select using (true);
 create policy "Users can create rallies" on rallies for insert with check (auth.uid() = from_user_id);
 
+-- EPISODE_COMMENTS
+-- Users can comment on individual episodes they've watched.
+-- Spoiler-safe: a viewer only sees a friend's comment on episode N once
+-- their own current_episode on that show exceeds N.
+create table if not exists public.episode_comments (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  show_id integer references public.shows(id) on delete cascade not null,
+  season integer not null default 1,
+  episode integer not null,
+  body text not null check (char_length(body) between 1 and 1000),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_id, show_id, season, episode)  -- one note per episode per user
+);
+alter table public.episode_comments enable row level security;
+
+-- Own comments: always visible to the author.
+create policy "Users can view own episode comments"
+  on episode_comments for select
+  using (auth.uid() = user_id);
+
+-- Friend comments: visible only when the viewer's progress on that show
+-- has surpassed the commented episode (viewer's current_episode > comment.episode).
+-- We join user_shows to enforce the spoiler gate at the DB level.
+create policy "Users can view friend episode comments after surpassing that episode"
+  on episode_comments for select
+  using (
+    exists (
+      select 1 from public.user_shows us
+      join public.friends f
+        on (f.user_id = auth.uid() and f.friend_id = episode_comments.user_id
+            and f.status = 'accepted')
+           or
+           (f.friend_id = auth.uid() and f.user_id = episode_comments.user_id
+            and f.status = 'accepted')
+      where us.user_id = auth.uid()
+        and us.show_id = episode_comments.show_id
+        and us.current_season >= episode_comments.season
+        and (
+          us.current_season > episode_comments.season
+          or us.current_episode > episode_comments.episode
+        )
+    )
+  );
+
+create policy "Users can insert own episode comments"
+  on episode_comments for insert
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.user_shows us
+      where us.user_id = auth.uid()
+        and us.show_id = episode_comments.show_id
+        and (
+          us.current_season > episode_comments.season
+          or (us.current_season = episode_comments.season
+              and us.current_episode >= episode_comments.episode)
+        )
+    )
+  );
+
+create policy "Users can update own episode comments"
+  on episode_comments for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete own episode comments"
+  on episode_comments for delete
+  using (auth.uid() = user_id);
+
+-- Auto-update updated_at on edits
+create or replace function public.touch_episode_comment_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger episode_comments_updated_at
+  before update on public.episode_comments
+  for each row execute procedure public.touch_episode_comment_updated_at();
+
 -- REALTIME: enable replication for live feed updates
 alter publication supabase_realtime add table activities;
 alter publication supabase_realtime add table rallies;
 alter publication supabase_realtime add table recommendations;
+alter publication supabase_realtime add table episode_comments;

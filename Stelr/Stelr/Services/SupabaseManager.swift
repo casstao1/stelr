@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Supabase
 
 @MainActor
@@ -15,36 +16,96 @@ final class SupabaseManager: ObservableObject {
             supabaseURL: AppConfig.supabaseURL,
             supabaseKey: AppConfig.supabaseAnonKey
         )
-        Task { await checkSession() }
     }
 
     // MARK: - Auth
     func checkSession() async {
+        guard AppConfig.supabaseEnabled else {
+            currentUser = nil
+            isAuthenticated = false
+            return
+        }
         do {
+            try ensureSupabaseHostResolves()
             let session = try await client.auth.session
             currentUser = session.user
             isAuthenticated = true
         } catch {
+            currentUser = nil
             isAuthenticated = false
         }
     }
 
     func signUp(email: String, password: String) async throws {
+        try ensureSupabaseReady()
         let response = try await client.auth.signUp(email: email, password: password)
         currentUser = response.user
         isAuthenticated = currentUser != nil
     }
 
     func signIn(email: String, password: String) async throws {
+        try ensureSupabaseReady()
         let session = try await client.auth.signIn(email: email, password: password)
         currentUser = session.user
         isAuthenticated = true
     }
 
     func signOut() async throws {
+        try ensureSupabaseReady()
         try await client.auth.signOut()
         currentUser = nil
         isAuthenticated = false
+    }
+
+    private func ensureSupabaseReady() throws {
+        guard AppConfig.supabaseEnabled else {
+            throw SupabaseConnectionError.disabled
+        }
+        try ensureSupabaseHostResolves()
+    }
+
+    private func ensureSupabaseHostResolves() throws {
+        guard let host = AppConfig.supabaseURL.host, !host.isEmpty else {
+            throw SupabaseConnectionError.invalidURL
+        }
+
+        var hints = addrinfo(
+            ai_flags: AI_DEFAULT,
+            ai_family: AF_UNSPEC,
+            ai_socktype: SOCK_STREAM,
+            ai_protocol: IPPROTO_TCP,
+            ai_addrlen: 0,
+            ai_canonname: nil,
+            ai_addr: nil,
+            ai_next: nil
+        )
+        var result: UnsafeMutablePointer<addrinfo>?
+        let status = getaddrinfo(host, "443", &hints, &result)
+        defer {
+            if let result {
+                freeaddrinfo(result)
+            }
+        }
+        guard status == 0 else {
+            throw SupabaseConnectionError.unreachableHost(host)
+        }
+    }
+
+    enum SupabaseConnectionError: LocalizedError {
+        case disabled
+        case invalidURL
+        case unreachableHost(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .disabled:
+                return "Cloud sync is disabled for this build."
+            case .invalidURL:
+                return "Supabase URL is invalid."
+            case .unreachableHost(let host):
+                return "Cannot reach \(host). Check simulator network/DNS or try again in a moment."
+            }
+        }
     }
 
     // MARK: - Shows (Supabase cache)
@@ -118,6 +179,14 @@ final class SupabaseManager: ObservableObject {
             .execute()
     }
 
+    func removeShowFromRotation(showId: Int, userId: String) async throws {
+        try await client.from("user_shows")
+            .delete()
+            .eq("user_id", value: userId)
+            .eq("show_id", value: showId)
+            .execute()
+    }
+
     // MARK: - Activities
     func logActivity(showId: Int, action: String, vibe: VibeOption?, score: Double?) async throws {
         guard let uid = currentUser?.id.uuidString else { return }
@@ -152,6 +221,87 @@ final class SupabaseManager: ObservableObject {
         }
         let rows = toUserIds.map { Rec(from_user_id: uid, to_user_id: $0, show_id: showId, message: message) }
         try await client.from("recommendations").insert(rows).execute()
+    }
+
+    // MARK: - Season Ratings
+
+    func fetchSeasonRatings() async throws -> [DBSeasonRating] {
+        guard let uid = currentUser?.id.uuidString else { return [] }
+        return try await client.from("season_ratings")
+            .select()
+            .eq("user_id", value: uid)
+            .execute()
+            .value
+    }
+
+    func upsertSeasonRating(showId: Int, season: Int, score: Double) async throws {
+        guard let uid = currentUser?.id.uuidString else { return }
+        let payload: [String: AnyJSON] = [
+            "user_id" : .string(uid),
+            "show_id" : .integer(showId),
+            "season"  : .integer(season),
+            "score"   : .double(score)
+        ]
+        try await client.from("season_ratings")
+            .upsert(payload, onConflict: "user_id,show_id,season")
+            .execute()
+    }
+
+    // MARK: - Lists
+
+    func fetchMyLists() async throws -> [DBUserList] {
+        guard let uid = currentUser?.id.uuidString else { return [] }
+        return try await client.from("user_lists")
+            .select("*, list_entries(*)")
+            .eq("user_id", value: uid)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    func upsertList(_ list: ShowList) async throws {
+        guard let uid = currentUser?.id.uuidString else { return }
+        let listId = list.id.uuidString
+
+        // 1. Upsert the parent list row
+        let listPayload: [String: AnyJSON] = [
+            "id"         : .string(listId),
+            "user_id"    : .string(uid),
+            "title"      : .string(list.title),
+            "updated_at" : .string(ISO8601DateFormatter().string(from: Date()))
+        ]
+        try await client.from("user_lists")
+            .upsert(listPayload, onConflict: "id")
+            .execute()
+
+        // 2. Delete old entries then re-insert (simplest replace strategy)
+        try await client.from("list_entries")
+            .delete()
+            .eq("list_id", value: listId)
+            .execute()
+
+        guard !list.entries.isEmpty else { return }
+
+        let entryRows: [[String: AnyJSON]] = list.entries.map { entry in
+            var row: [String: AnyJSON] = [
+                "list_id" : .string(listId),
+                "rank"    : .integer(entry.rank)
+            ]
+            if let showId = entry.showId       { row["show_id"]         = .integer(showId) }
+            if let text   = entry.freeTextTitle { row["free_text_title"] = .string(text) }
+            return row
+        }
+        try await client.from("list_entries")
+            .insert(entryRows)
+            .execute()
+    }
+
+    func deleteList(id: UUID) async throws {
+        // list_entries cascade-delete via FK
+        try await client.from("user_lists")
+            .delete()
+            .eq("id", value: id.uuidString)
+            .execute()
     }
 
     // MARK: - Rallies

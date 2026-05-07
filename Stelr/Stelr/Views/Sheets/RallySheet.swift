@@ -17,12 +17,12 @@ struct RallySheet: View {
                         .fill(Color(hex: show.gradient1).opacity(0.8))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: show.accentColor).opacity(0.27), lineWidth: 1))
                     Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 22.4))
+                        .font(.system(size: 18))
                         .foregroundColor(Color(hex: show.accentColor))
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Rally your circle").font(.custom("Georgia", size: 21.3)).italic().foregroundColor(.stelrText)
+                    Text("Rally your circle").font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrText)
                     Text("Ping everyone to watch \(show.title) right now")
                         .font(.system(size: 13.4)).foregroundColor(.stelrMuted)
                 }
@@ -37,9 +37,9 @@ struct RallySheet: View {
                     ForEach(appState.friends) { friend in
                         VStack(spacing: 5) {
                             ZStack {
-                                AvatarView(initials: friend.initials, hexColor: friend.hexColor, size: 36)
+                                AvatarView(initials: friend.initials, hexColor: friend.hexColor, imageURL: friend.imageURL, size: 36)
                                 if sent {
-                                    Circle().stroke(Color(hex: "72c97e"), lineWidth: 1.5)
+                                    Circle().stroke(Color.white.opacity(0.18), lineWidth: 1)
                                         .frame(width: 40, height: 40).transition(.scale)
                                 }
                             }
@@ -63,7 +63,7 @@ struct RallySheet: View {
                     Task { try? await appState.supabase.sendRally(showId: show.id) }
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    StelrHaptics.success()
                     withAnimation { sent = true; sending = false }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
                 }
