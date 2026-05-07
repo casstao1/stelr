@@ -25,3 +25,7 @@ build/
 # Secrets and local environment
 .env
 .env.*
+
+# Local agent/tooling state
+.claude/
+.tools/
