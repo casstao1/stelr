@@ -5,34 +5,36 @@ struct ShowPosterView<Content: View>: View {
     var width: CGFloat
     var height: CGFloat
     var radius: CGFloat = 14
+    var loadsRemoteImage: Bool = true
     @ViewBuilder var overlay: () -> Content
 
-    init(show: Show, width: CGFloat, height: CGFloat, radius: CGFloat = 14, @ViewBuilder overlay: @escaping () -> Content) {
-        self.show = show; self.width = width; self.height = height; self.radius = radius; self.overlay = overlay
+    init(
+        show: Show,
+        width: CGFloat,
+        height: CGFloat,
+        radius: CGFloat = 14,
+        loadsRemoteImage: Bool = true,
+        @ViewBuilder overlay: @escaping () -> Content
+    ) {
+        self.show = show
+        self.width = width
+        self.height = height
+        self.radius = radius
+        self.loadsRemoteImage = loadsRemoteImage
+        self.overlay = overlay
     }
 
     var body: some View {
         ZStack {
             // ── Background: real poster if available, else gradient ───────────
-            if let urlStr = show.imageURL, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        fittedPoster(image)
-                    case .failure:
-                        gradientBg
-                    default:
-                        // Placeholder while loading: show gradient + shimmer
-                        gradientBg
-                            .overlay(shimmer)
-                    }
-                }
+            if loadsRemoteImage, let primaryImageURL {
+                remotePoster(primary: primaryImageURL, fallback: fallbackImageURL)
             } else {
                 gradientBg
             }
 
             // ── Grid texture (only visible on gradient fallback) ─────────────
-            if show.imageURL == nil {
+            if !loadsRemoteImage || primaryImageURL == nil {
                 Canvas { ctx, size in
                     let step: CGFloat = 12
                     var x: CGFloat = 0
@@ -52,22 +54,8 @@ struct ShowPosterView<Content: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: radius))
             }
 
-            // ── Accent top bar ────────────────────────────────────────────────
-            VStack {
-                HStack {
-                    Rectangle()
-                        .fill(LinearGradient(
-                            colors: [Color(hex: show.accentColor).opacity(0.8), .clear],
-                            startPoint: .leading, endPoint: .trailing
-                        ))
-                        .frame(width: width * 0.6, height: 2)
-                    Spacer()
-                }
-                Spacer()
-            }
-
             // ── Dark scrim so overlay text stays readable on real posters ─────
-            if show.imageURL != nil {
+            if loadsRemoteImage && primaryImageURL != nil {
                 LinearGradient(
                     colors: [.clear, .black.opacity(0.35)],
                     startPoint: .center,
@@ -83,6 +71,16 @@ struct ShowPosterView<Content: View>: View {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    private var primaryImageURL: URL? {
+        (show.imageURL ?? show.previewImageURL).flatMap(URL.init(string:))
+    }
+
+    private var fallbackImageURL: URL? {
+        guard let previewImageURL = show.previewImageURL,
+              previewImageURL != show.imageURL else { return nil }
+        return URL(string: previewImageURL)
+    }
+
     private var gradientBg: some View {
         RoundedRectangle(cornerRadius: radius)
             .fill(LinearGradient(
@@ -93,34 +91,77 @@ struct ShowPosterView<Content: View>: View {
             .frame(width: width, height: height)
     }
 
+    private func remotePoster(primary: URL, fallback: URL?) -> some View {
+        AsyncImage(url: primary) { phase in
+            switch phase {
+            case .success(let image):
+                fittedPoster(image)
+            case .failure:
+                if let fallback {
+                    AsyncImage(url: fallback) { fallbackPhase in
+                        switch fallbackPhase {
+                        case .success(let image):
+                            fittedPoster(image)
+                        case .failure:
+                            gradientBg
+                        default:
+                            gradientBg
+                                .overlay(shimmer)
+                        }
+                    }
+                } else {
+                    gradientBg
+                }
+            default:
+                // Placeholder while loading: show gradient + shimmer
+                gradientBg
+                    .overlay(shimmer)
+            }
+        }
+    }
+
     private func fittedPoster(_ image: Image) -> some View {
         ZStack {
-            image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: width, height: height)
-                .scaleEffect(1.08)
-                .blur(radius: 12)
-                .opacity(0.38)
-                .clipped()
-
+            // Gradient base — always fills frame with show's palette
             LinearGradient(
                 colors: [
-                    Color(hex: show.gradient1).opacity(0.38),
-                    Color(hex: show.gradient2).opacity(0.78)
+                    Color(hex: show.gradient1),
+                    Color(hex: show.gradient2)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
-            image
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: width, height: height)
-                .shadow(color: .black.opacity(0.28), radius: 8, y: 3)
+            if isPortraitFrame {
+                // Portrait frame: show full poster with colored fill on any thin side bars
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .blur(radius: 10)
+                    .opacity(0.30)
+                    .clipped()
+
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: width, height: height)
+            } else {
+                // Landscape frame: fill to crop — shows the center of the poster (key art)
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .clipped()
+            }
         }
         .frame(width: width, height: height)
         .clipped()
+    }
+
+    // True when the frame is taller than wide (portrait or square-ish)
+    private var isPortraitFrame: Bool {
+        height >= width * 0.85
     }
 
     private var shimmer: some View {
@@ -158,7 +199,7 @@ private struct ShimmerView: View {
 
 // ── Convenience init without overlay ──────────────────────────────────────────
 extension ShowPosterView where Content == EmptyView {
-    init(show: Show, width: CGFloat, height: CGFloat, radius: CGFloat = 14) {
-        self.init(show: show, width: width, height: height, radius: radius) { EmptyView() }
+    init(show: Show, width: CGFloat, height: CGFloat, radius: CGFloat = 14, loadsRemoteImage: Bool = true) {
+        self.init(show: show, width: width, height: height, radius: radius, loadsRemoteImage: loadsRemoteImage) { EmptyView() }
     }
 }

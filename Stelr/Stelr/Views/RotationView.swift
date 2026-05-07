@@ -15,7 +15,7 @@ struct RotationView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Color.stelrBg.ignoresSafeArea()
+            StelrStarFieldBackground().ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -23,7 +23,7 @@ struct RotationView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("my rotation")
-                                .font(.custom("Georgia", size: 31.4).weight(.semibold))
+                                .font(StelrTypography.pageTitle)
                                 .foregroundColor(.stelrText)
                             Group {
                                 Text("\(appState.myShows.count) shows · ") + Text("stelr").foregroundColor(.stelrAccent)
@@ -33,9 +33,9 @@ struct RotationView: View {
                         Spacer()
                         Button { showSearch = true } label: {
                             Image(systemName: "plus")
-                                .font(.system(size: 24.6, weight: .light))
+                                .font(.system(size: 18.5, weight: .light))
                                 .foregroundColor(.stelrAccent)
-                                .frame(width: 42, height: 42)
+                                .frame(width: 36, height: 36)
                                 .background(Color.stelrAccent.opacity(0.1))
                                 .overlay(Circle().stroke(Color.stelrAccent.opacity(0.27), lineWidth: 0.5))
                                 .clipShape(Circle())
@@ -49,12 +49,12 @@ struct RotationView: View {
                             MascotView(mood: .idle, size: 50)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("\(show.title) is due for a vibe check")
-                                    .font(.custom("Georgia", size: 16.2)).italic().foregroundColor(.stelrText)
+                                    .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrText)
                                 Text("last rated \(n.lastChecked)")
                                     .font(.system(size: 11.8)).foregroundColor(.stelrMuted)
                             }
                             Spacer()
-                            Button { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); activeVibeSheet = n } label: {
+                            Button { StelrHaptics.mediumTap(); activeVibeSheet = n } label: {
                                 Text("Rate")
                                     .font(.system(size: 14.2, weight: .semibold)).foregroundColor(.white)
                                     .padding(.horizontal, 15).padding(.vertical, 8)
@@ -111,8 +111,10 @@ struct RotationView: View {
         }
         .sheet(item: $activeVibeSheet) { ms in
             if let show = appState.show(for: ms.showId) {
-                VibeCheckSheet(show: show, currentVibe: ms.vibe) { opt in
-                    appState.updateVibeForMyShow(myShowId: ms.id, vibe: opt)
+                VibeCheckSheet(show: show, currentMyShow: ms) { season, episode, score in
+                    appState.submitCheckIn(show: show, season: season, episode: episode, score: score)
+                } onSeasonRating: { season, rating in
+                    appState.submitSeasonRating(showId: show.id, season: season, score: rating)
                 }
             }
         }
@@ -157,6 +159,7 @@ private struct MyShowRow: View {
     @State private var seasonFirework = false
 
     private var vOpt: VibeOption { myShow.vibe }
+    private var ratingColor: Color { H7bStarVisualStyle.ratingColor(appScore: myShow.score) }
     private var progress: Double { Double(myShow.currentEpisode) / Double(max(1, myShow.totalEpisodes)) }
 
     var body: some View {
@@ -180,14 +183,14 @@ private struct MyShowRow: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(show.title)
-                    .font(.custom("Georgia", size: 18.4)).foregroundColor(.stelrText)
+                    .font(StelrTypography.sectionTitle).foregroundColor(.stelrText)
                     .padding(.bottom, 8)
 
                 // Season stepper (fully wired)
                 HStack(spacing: 8) {
                     Text("SEASON").font(.system(size: 10.8)).foregroundColor(.stelrMuted).kerning(0.55)
                     stepButton("‹") { onDecSeason() }
-                    Text("S\(myShow.currentSeason)").font(.custom("Georgia", size: 16.8)).foregroundColor(.stelrText)
+                    Text("S\(myShow.currentSeason)").font(StelrTypography.sectionTitle).foregroundColor(.stelrText)
                     stepButton("›") { onIncSeason() }
                 }
                 .padding(.bottom, 7)
@@ -197,7 +200,7 @@ private struct MyShowRow: View {
                         Text("ep").font(.system(size: 10.9)).foregroundColor(.stelrMuted)
                         // Episode number bounces when incremented (scoreUpdate style)
                         Text("\(myShow.currentEpisode)")
-                            .font(.custom("Georgia", size: 17.2)).foregroundColor(.stelrText)
+                            .font(StelrTypography.sectionTitle).foregroundColor(.stelrText)
                             .scaleEffect(epBumped ? 1.18 : 1.0)
                             .animation(.spring(response: 0.25, dampingFraction: 0.5), value: epBumped)
                         Text("/ \(myShow.totalEpisodes)").font(.system(size: 10.9)).foregroundColor(.stelrMuted)
@@ -265,33 +268,29 @@ private struct MyShowRow: View {
                 HStack(alignment: .center, spacing: 8) {
                     Text("\(vOpt.emoji) \(vOpt.label)")
                         .font(.system(size: 13.2, weight: .medium))
-                        .foregroundColor(Color(hex: vOpt.hexColor))
+                        .foregroundColor(ratingColor)
                         .padding(.horizontal, 9).padding(.vertical, 4)
-                        .background(Color(hex: vOpt.hexColor).opacity(0.12))
+                        .background(ratingColor.opacity(0.12))
                         .clipShape(Capsule())
-                    VibeWaveView(vibe: vOpt, size: 14, animate: true)
+                    VibeWaveView(vibe: vOpt, score: myShow.score, size: 14, animate: true)
                 }
                 .padding(.bottom, 9)
 
                 // Friends watching
                 if !watchingFriends.isEmpty {
-                    HStack(spacing: 8) {
-                        ForEach(watchingFriends.prefix(3)) { f in
-                            AvatarView(initials: f.initials, hexColor: f.hexColor, size: 25, showBorder: true)
-                        }
-                        Text(watchingFriends.count == 1 ? "\(watchingFriends[0].name) also watching" : "\(watchingFriends.count) friends watching")
-                            .font(.system(size: 11.1)).foregroundColor(.stelrMuted)
-                    }
+                    FriendStackView(friends: watchingFriends, avatarSize: 25)
                     .padding(.bottom, 9)
                 }
 
                 HStack(spacing: 8) {
                     Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        StelrHaptics.mediumTap()
                         onVibeCheck()
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "star").font(.system(size: 12.0))
+                            StelrFourPointStar(variant: .twinkle)
+                                .fill(Color.stelrMuted)
+                                .frame(width: 12, height: 12)
                             Text("vibe check").font(.system(size: 13.2, weight: .medium))
                         }
                         .foregroundColor(.stelrMuted)
@@ -303,7 +302,7 @@ private struct MyShowRow: View {
                     .buttonStyle(.stelrPress)
 
                     Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        StelrHaptics.lightTap()
                         onTellEveryone()
                     } label: {
                         HStack(spacing: 5) {
@@ -328,9 +327,9 @@ private struct MyShowRow: View {
             guard !isDisabled else { return }
             // Episode buttons (34pt) get a crisp rigid tap; season buttons (26pt) get a lighter click
             if size >= 34 {
-                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                StelrHaptics.firmTap()
             } else {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                StelrHaptics.lightTap()
             }
             action()
         } label: {
@@ -348,7 +347,7 @@ private struct MyShowRow: View {
     }
 
     private func triggerSeasonFirework() {
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        StelrHaptics.success()
         seasonFirework = false
         DispatchQueue.main.async {
             seasonFirework = true
@@ -540,20 +539,20 @@ private struct MustWatchAlertSheet: View {
                 Circle()
                     .fill(Color(hex: show.accentColor).opacity(0.14))
                     .overlay(Circle().stroke(Color(hex: show.accentColor).opacity(0.35), lineWidth: 1))
-                    .frame(width: 58, height: 58)
+                    .frame(width: 48, height: 48)
                 Image(systemName: "megaphone.fill")
-                    .font(.system(size: 26.9, weight: .semibold))
+                    .font(.system(size: 21, weight: .semibold))
                     .foregroundColor(Color(hex: show.accentColor))
             }
             .padding(.bottom, 14)
 
             Text("Tell everyone?")
-                .font(.custom("Georgia", size: 24.6).italic())
+                .font(StelrTypography.bodyStrong)
                 .foregroundColor(.stelrText)
                 .padding(.bottom, 8)
 
             Text("This will send an alert to all your friends that \(show.title) is a must watch.")
-                .font(.system(size: 15.7))
+                .font(StelrTypography.callout)
                 .foregroundColor(.stelrMuted)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -571,14 +570,14 @@ private struct MustWatchAlertSheet: View {
                         Text("sending...")
                     } else {
                         Image(systemName: "paperplane.fill")
-                            .font(.system(size: 15.7, weight: .semibold))
+                            .font(StelrTypography.buttonSmall)
                         Text("send it!")
                     }
                 }
-                .font(.system(size: 17.9, weight: .semibold))
+                .font(StelrTypography.button)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(height: 46)
                 .background(sent ? Color(hex: "72c97e") : Color.stelrAccent)
                 .clipShape(RoundedRectangle(cornerRadius: 15))
             }

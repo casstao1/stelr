@@ -10,6 +10,7 @@ struct ShowSearchSheet: View {
     @State private var searchTask: Task<Void, Never>?
     /// Tracks ids added this session so the checkmark persists without re-querying
     @State private var addedIds: Set<Int> = []
+    @State private var detailShow: Show?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,9 +24,9 @@ struct ShowSearchSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("add a show")
-                        .font(.custom("Georgia", size: 22.4).weight(.semibold))
+                        .font(StelrTypography.pageTitle)
                         .foregroundColor(.stelrText)
-                    Text("search any show on TVMaze")
+                    Text("search TV + anime")
                         .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
                 }
                 Spacer()
@@ -89,6 +90,9 @@ struct ShowSearchSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .preferredColorScheme(.dark)
+        .sheet(item: $detailShow) { show in
+            ShowDetailView(show: show, watchingFriends: appState.friendsWatching(showId: show.id))
+        }
         .onChange(of: query) { _, newVal in
             scheduleSearch(query: newVal)
         }
@@ -102,15 +106,17 @@ struct ShowSearchSheet: View {
                 ForEach(results) { show in
                     let alreadyInRotation = appState.myShows.contains(where: { $0.showId == show.id })
                     let justAdded = addedIds.contains(show.id)
-                    SearchResultRow(
-                        show: show,
-                        isAdded: alreadyInRotation || justAdded
-                    ) {
-                        withAnimation(.spring(response: 0.3)) {
-                            appState.addShowToRotation(show)
-                            addedIds.insert(show.id)
-                        }
-                    }
+	                    SearchResultRow(
+	                        show: show,
+	                        isAdded: alreadyInRotation || justAdded,
+	                        onOpen: { detailShow = show },
+	                        onAdd: {
+	                            withAnimation(.spring(response: 0.3)) {
+	                                appState.addShowToRotation(show)
+	                                addedIds.insert(show.id)
+	                            }
+	                        }
+	                    )
                     Divider().background(Color.stelrBorder).padding(.horizontal, 18)
                 }
             }
@@ -130,9 +136,9 @@ struct ShowSearchSheet: View {
 
     private var emptyView: some View {
         VStack(spacing: 12) {
-            Text("📺").font(.system(size: 50.2))
+            Text("📺").font(.system(size: 38))
             Text("no results for \(query)")
-                .font(.custom("Georgia", size: 16.8)).italic().foregroundColor(.stelrMuted)
+                .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrMuted)
             Text("try another title or check spelling")
                 .font(.system(size: 12.3)).foregroundColor(.stelrMuted.opacity(0.7))
         }
@@ -141,10 +147,10 @@ struct ShowSearchSheet: View {
     private var promptView: some View {
         VStack(spacing: 12) {
             Image(systemName: "tv")
-                .font(.system(size: 35.8, weight: .ultraLight))
+                .font(.system(size: 30, weight: .ultraLight))
                 .foregroundColor(.stelrMuted)
             Text("search any show")
-                .font(.custom("Georgia", size: 16.8)).italic().foregroundColor(.stelrMuted)
+                .font(StelrTypography.sectionTitle).italic().foregroundColor(.stelrMuted)
         }
         .opacity(0.6)
     }
@@ -164,7 +170,7 @@ struct ShowSearchSheet: View {
             try? await Task.sleep(nanoseconds: 420_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run { isSearching = true }
-            let found = await appState.searchTVMaze(query: trimmed)
+            let found = await appState.searchShows(query: trimmed)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 results = found
@@ -179,52 +185,59 @@ struct ShowSearchSheet: View {
 private struct SearchResultRow: View {
     let show: Show
     let isAdded: Bool
+    var onOpen: () -> Void
     var onAdd: () -> Void
 
     @State private var tapped = false
 
     var body: some View {
         HStack(spacing: 13) {
-            // Poster thumbnail
-            ShowPosterView(show: show, width: 50, height: 70, radius: 9) {
-                // Genre pill over poster
-                VStack {
-                    Spacer()
-                    if let genre = show.genre?.components(separatedBy: " · ").first {
-                        Text(genre)
-                            .font(.system(size: 8.4, weight: .medium))
-                            .foregroundColor(.white.opacity(0.75))
-                            .padding(.horizontal, 4).padding(.vertical, 2)
-                            .background(Color.black.opacity(0.45))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .padding(5)
+            Button {
+                StelrHaptics.lightTap()
+                onOpen()
+            } label: {
+                HStack(spacing: 13) {
+                    ShowPosterView(show: show, width: 50, height: 70, radius: 9) {
+                        VStack {
+                            Spacer()
+                            if let genre = show.genre?.components(separatedBy: " · ").first {
+                                Text(genre)
+                                    .font(.system(size: 8.4, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.75))
+                                    .padding(.horizontal, 4).padding(.vertical, 2)
+                                    .background(Color.black.opacity(0.45))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .padding(5)
+                            }
+                        }
                     }
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(show.title)
+                            .font(StelrTypography.sectionTitle).foregroundColor(.stelrText)
+                            .lineLimit(1)
+
+                        HStack(spacing: 6) {
+                            Text(show.platform)
+                                .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
+                            if let yr = show.year {
+                                Text("·").font(.system(size: 12.5)).foregroundColor(.stelrBorder)
+                                Text(String(yr))
+                                    .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
+                            }
+                        }
+
+                        if let genre = show.genre {
+                            Text(genre)
+                                .font(.system(size: 11.8)).foregroundColor(.stelrMuted.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
                 }
             }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(show.title)
-                    .font(.custom("Georgia", size: 17.4)).foregroundColor(.stelrText)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Text(show.platform)
-                        .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
-                    if let yr = show.year {
-                        Text("·").font(.system(size: 12.5)).foregroundColor(.stelrBorder)
-                        Text(String(yr))
-                            .font(.system(size: 12.3)).foregroundColor(.stelrMuted)
-                    }
-                }
-
-                if let genre = show.genre {
-                    Text(genre)
-                        .font(.system(size: 11.8)).foregroundColor(.stelrMuted.opacity(0.7))
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
+            .buttonStyle(.stelrPress)
 
             // Add / added button
             Button {

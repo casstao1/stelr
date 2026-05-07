@@ -19,7 +19,7 @@ struct LiveFeedSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Text("live ratings")
-                            .font(.custom("Georgia", size: 22.4).weight(.semibold))
+                            .font(StelrTypography.pageTitle)
                             .foregroundColor(.stelrText)
                         // Pulsing live dot
                         LiveDot()
@@ -84,11 +84,20 @@ private struct LiveActivityRow: View {
     var onTapFriend: () -> Void
     var onTapShow:   () -> Void
 
+    private var ratingScore: Double? {
+        if let score = activity.score { return score }
+        return activity.vibe == .notWatching ? nil : friend.score
+    }
+
+    private var ratingColor: Color {
+        H7bStarVisualStyle.ratingColor(score: ratingScore, fallback: activity.vibe)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Avatar — tap opens friend profile
             Button(action: onTapFriend) {
-                AvatarView(initials: friend.initials, hexColor: friend.hexColor, size: 40)
+                AvatarView(initials: friend.initials, hexColor: friend.hexColor, imageURL: friend.imageURL, size: 40)
             }
             .buttonStyle(.stelrPress)
 
@@ -109,7 +118,7 @@ private struct LiveActivityRow: View {
                     .font(.system(size: 13.4)).foregroundColor(.stelrMuted)
                 + Text(" ")
                 + Text(show.title)
-                    .font(.custom("Georgia", size: 13.4)).italic()
+                    .font(StelrTypography.sectionTitle).italic()
                     .foregroundColor(.stelrText)
 
                 // Show card with vibe
@@ -118,21 +127,21 @@ private struct LiveActivityRow: View {
                         ShowPosterView(show: show, width: 38, height: 38, radius: 7)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(show.title)
-                                .font(.custom("Georgia", size: 14.6)).foregroundColor(.stelrText)
+                                .font(StelrTypography.sectionTitle).foregroundColor(.stelrText)
                                 .lineLimit(1)
                             HStack(spacing: 6) {
                                 Text(show.currentEpisode)
                                     .font(.system(size: 11.8)).foregroundColor(.stelrMuted)
                                 Text("\(activity.vibe.emoji) \(activity.vibe.label)")
                                     .font(.system(size: 11.8))
-                                    .foregroundColor(Color(hex: activity.vibe.hexColor))
+                                    .foregroundColor(ratingColor)
                                     .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Color(hex: activity.vibe.hexColor).opacity(0.09))
+                                    .background(ratingColor.opacity(0.09))
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                         }
                         Spacer()
-                        VibeWaveView(vibe: activity.vibe, size: 14, animate: false)
+                        VibeWaveView(vibe: activity.vibe, score: ratingScore, size: 14)
                     }
                     .padding(10)
                     .background(Color.white.opacity(0.04))

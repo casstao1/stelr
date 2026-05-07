@@ -2,6 +2,9 @@ import Foundation
 
 enum AppConfig {
     // ─── Supabase ────────────────────────────────────────────────────────────
+    // Flip this off for pure local/mock builds without touching the Supabase code paths.
+    static let supabaseEnabled = true
+
     // 1. Your project URL (already filled in from your dashboard)
     static let supabaseURL = URL(string: "https://vdtsdanotuewetigepbg.supabase.co")!
 
@@ -10,4 +13,7 @@ enum AppConfig {
 
     // ─── TVMaze (free, no auth needed) ───────────────────────────────────────
     static let tvmazeBaseURL = "https://api.tvmaze.com"
+
+    // ─── AniList (public GraphQL API) ────────────────────────────────────────
+    static let anilistGraphQLEndpoint = URL(string: "https://graphql.anilist.co")!
 }
