@@ -1913,21 +1913,24 @@ private struct SeasonCompletionShootingStarOverlay: View {
     }
 
     private func shootingStar(size: CGSize, progress: CGFloat) -> some View {
-        // Travel through the empty strip just above the tab bar (~78–82 % down)
-        let start  = CGPoint(x: -190,             y: size.height * 0.81)
-        let end    = CGPoint(x: size.width + 178,  y: size.height * 0.75)
+        let start  = CGPoint(x: -190,            y: size.height * 0.81)
+        let end    = CGPoint(x: size.width + 178, y: size.height * 0.75)
         let eased  = Self.easeInOutSine(progress)
         let point  = Self.interpolate(from: start, to: end, progress: eased)
         let cardW  = min(size.width - 64, 220)
         let cardX  = Self.clamp(point.x, min: cardW / 2 + 16, max: size.width - cardW / 2 - 16)
-        let cardY  = point.y - 38
+        let cardH: CGFloat = 28        // approximate pill height for tether math
+        let tether: CGFloat = 14       // gap between tag bottom and tether start
+        let tagBottomY = point.y - tether - cardH / 2
         let frozen = frozenProgress != nil
+        let cardAlpha = cardOpacity(progress, frozen: frozen)
 
         return ZStack {
-            shootingTrail(from: start, to: end, point: point, progress: eased)
+            // ── Trail ──────────────────────────────────────────────────────────
+            shootingTrail(from: start, to: end, point: point, progress: eased, size: size)
                 .opacity(trailOpacity(progress, frozen: frozen))
 
-            // Freeze burst ring — expands and fades on tap
+            // ── Freeze burst ring ──────────────────────────────────────────────
             Circle()
                 .stroke(Color.white.opacity(0.62), lineWidth: 1.5)
                 .frame(width: 32, height: 32)
@@ -1935,6 +1938,7 @@ private struct SeasonCompletionShootingStarOverlay: View {
                 .opacity(freezeBurstOpacity)
                 .position(point)
 
+            // ── Star head ──────────────────────────────────────────────────────
             StelrFourPointStar(variant: .twinkle)
                 .fill(Color.white.opacity(frozen ? 1.0 : 0.96))
                 .frame(width: frozen ? 22 : 18, height: frozen ? 22 : 18)
@@ -1945,140 +1949,215 @@ private struct SeasonCompletionShootingStarOverlay: View {
                 .animation(.spring(response: 0.28, dampingFraction: 0.68), value: frozen)
                 .position(point)
 
+            // ── Tether line (tag → star) ───────────────────────────────────────
+            // Thin thread anchoring the label to the moving star — visible only
+            // while the card is showing, fades with it.
+            if cardAlpha > 0 {
+                Path { p in
+                    p.move(to: CGPoint(x: cardX, y: tagBottomY))
+                    p.addLine(to: CGPoint(x: point.x, y: point.y - 10))
+                }
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.55),
+                            Color.white.opacity(0.08)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    style: StrokeStyle(lineWidth: 0.75, lineCap: .round)
+                )
+                .opacity(cardAlpha * 0.85)
+
+                // Small anchor dot where tether meets the star
+                Circle()
+                    .fill(Color.white.opacity(0.55))
+                    .frame(width: 3, height: 3)
+                    .position(x: point.x, y: point.y - 10)
+                    .opacity(cardAlpha * 0.70)
+            }
+
+            // ── Metadata label ─────────────────────────────────────────────────
             metadataCard
                 .frame(width: cardW)
-                .position(x: cardX, y: cardY)
-                .opacity(cardOpacity(progress, frozen: frozen))
-                .offset(y: cardOpacity(progress, frozen: frozen) < 0.9 ? 8 : 0)
+                .position(x: cardX, y: point.y - tether - cardH / 2)
+                .opacity(cardAlpha)
+                .scaleEffect(cardAlpha < 0.9 ? 0.94 + cardAlpha * 0.06 : 1, anchor: .bottom)
         }
         .frame(width: size.width, height: size.height)
     }
 
-    private func shootingTrail(from start: CGPoint, to end: CGPoint, point: CGPoint, progress: CGFloat) -> some View {
+    // MARK: - Trail
+
+    private func shootingTrail(
+        from start: CGPoint, to end: CGPoint,
+        point: CGPoint, progress: CGFloat,
+        size: CGSize
+    ) -> some View {
         let dx = end.x - start.x
         let dy = end.y - start.y
-        let length = max(1, sqrt(dx * dx + dy * dy))
-        let unitX = dx / length
-        let unitY = dy / length
-        let normalX = -unitY
-        let normalY = unitX
-        let tailLength = 150 + 126 * Self.easeOutQuart(progress)
-        let tail = CGPoint(x: point.x - unitX * tailLength, y: point.y - unitY * tailLength)
-        let midTail = CGPoint(x: point.x - unitX * tailLength * 0.62, y: point.y - unitY * tailLength * 0.62)
-        let nearTail = CGPoint(x: point.x - unitX * tailLength * 0.28, y: point.y - unitY * tailLength * 0.28)
-        let arcControl = CGPoint(
-            x: point.x - unitX * tailLength * 0.54 + normalX * 9,
-            y: point.y - unitY * tailLength * 0.54 + normalY * 9
+        let length   = max(1, sqrt(dx * dx + dy * dy))
+        let unitX    = dx / length
+        let unitY    = dy / length
+        let normalX  = -unitY
+        let normalY  =  unitX
+
+        // Tail grows as the star accelerates across the screen
+        let tailLength = 160 + 140 * Self.easeOutQuart(progress)
+        let tail    = CGPoint(x: point.x - unitX * tailLength,       y: point.y - unitY * tailLength)
+        let midTail = CGPoint(x: point.x - unitX * tailLength * 0.55, y: point.y - unitY * tailLength * 0.55)
+
+        // Gentle upward arc on the trail (natural meteor curve)
+        let arcCtrl = CGPoint(
+            x: point.x - unitX * tailLength * 0.50 + normalX * 14,
+            y: point.y - unitY * tailLength * 0.50 + normalY * 14
+        )
+        let midCtrl = CGPoint(
+            x: point.x - unitX * tailLength * 0.32 + normalX * 6,
+            y: point.y - unitY * tailLength * 0.32 + normalY * 6
         )
 
+        // Gradient endpoints aligned with the travel direction
+        let w = max(1, size.width)
+        let h = max(1, size.height)
+        let gradStart = UnitPoint(x: tail.x / w,  y: tail.y / h)
+        let gradEnd   = UnitPoint(x: point.x / w, y: point.y / h)
+
         return ZStack {
-            Path { path in
-                path.move(to: tail)
-                path.addQuadCurve(to: point, control: arcControl)
+
+            // ── 1. Atmospheric bloom — widest, softest, background glow ────────
+            Path { p in
+                p.move(to: tail)
+                p.addQuadCurve(to: point, control: arcCtrl)
             }
             .stroke(
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.stelrAccent.opacity(0.06),
-                        Color.white.opacity(0.12),
-                        Color.stelrAccent.opacity(0.18)
+                        Color.stelrAccent.opacity(0.10),
+                        Color.white.opacity(0.18),
+                        Color.white.opacity(0.32)
                     ],
-                    startPoint: .leading,
-                    endPoint: .trailing
+                    startPoint: gradStart, endPoint: gradEnd
                 ),
-                style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                style: StrokeStyle(lineWidth: 22, lineCap: .round)
             )
-            .blur(radius: 16)
+            .blur(radius: 20)
 
-            Path { path in
-                path.move(to: tail)
-                path.addQuadCurve(to: point, control: arcControl)
+            // ── 2. Mid glow — the visible halo around the trail ───────────────
+            Path { p in
+                p.move(to: tail)
+                p.addQuadCurve(to: point, control: arcCtrl)
             }
             .stroke(
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.white.opacity(0.04),
-                        Color.white.opacity(0.22),
-                        Color(hex: "FFEAC5").opacity(0.46)
+                        Color.stelrAccent.opacity(0.14),
+                        Color.white.opacity(0.42),
+                        Color(hex: "FFEAC5").opacity(0.72)
                     ],
-                    startPoint: .leading,
-                    endPoint: .trailing
+                    startPoint: gradStart, endPoint: gradEnd
                 ),
-                style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
+                style: StrokeStyle(lineWidth: 6, lineCap: .round)
             )
-            .blur(radius: 1.1)
+            .blur(radius: 5)
 
-            Path { path in
-                path.move(to: midTail)
-                path.addQuadCurve(
-                    to: point,
-                    control: CGPoint(
-                        x: point.x - unitX * tailLength * 0.36 + normalX * 4,
-                        y: point.y - unitY * tailLength * 0.36 + normalY * 4
-                    )
+            // ── 3. Bright trail core ──────────────────────────────────────────
+            Path { p in
+                p.move(to: midTail)
+                p.addQuadCurve(to: point, control: midCtrl)
+            }
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Color.white.opacity(0.55),
+                        Color(hex: "FFEAC5").opacity(0.88),
+                        Color.white.opacity(1.0)
+                    ],
+                    startPoint: UnitPoint(x: midTail.x / w, y: midTail.y / h),
+                    endPoint: gradEnd
+                ),
+                style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+            )
+            .blur(radius: 0.4)
+
+            // ── 4. Razor core — the single brightest pixel spine ──────────────
+            Path { p in
+                let nearTail = CGPoint(
+                    x: point.x - unitX * tailLength * 0.35,
+                    y: point.y - unitY * tailLength * 0.35
                 )
+                p.move(to: nearTail)
+                p.addLine(to: point)
             }
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        Color.clear,
-                        Color.white.opacity(0.30),
-                        Color.white.opacity(0.92)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                style: StrokeStyle(lineWidth: 1.15, lineCap: .round)
+            .stroke(Color.white.opacity(0.95), style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
+
+            // ── 5. Head corona — radial burst right at the star tip ───────────
+            RadialGradient(
+                colors: [
+                    Color.white.opacity(0.55),
+                    Color(hex: "FFEAC5").opacity(0.22),
+                    Color.stelrAccent.opacity(0.08),
+                    Color.clear
+                ],
+                center: .center,
+                startRadius: 0,
+                endRadius: 38
             )
-            .blur(radius: 0.12)
+            .frame(width: 76, height: 76)
+            .blur(radius: 4)
+            .position(point)
+            .blendMode(.screen)
 
-            Path { path in
-                path.move(to: CGPoint(x: nearTail.x + normalX * 5.0, y: nearTail.y + normalY * 5.0))
-                path.addLine(to: CGPoint(x: point.x + normalX * 2.2, y: point.y + normalY * 2.2))
-            }
-            .stroke(Color.stelrAccent.opacity(0.18), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
-            .blur(radius: 5.2)
-
-            Path { path in
-                path.move(to: CGPoint(x: midTail.x - normalX * 4.5, y: midTail.y - normalY * 4.5))
-                path.addLine(to: CGPoint(x: point.x - normalX * 1.7, y: point.y - normalY * 1.7))
-            }
-            .stroke(Color.white.opacity(0.10), style: StrokeStyle(lineWidth: 1.15, lineCap: .round))
-            .blur(radius: 3.8)
-
-            ForEach(0..<8, id: \.self) { index in
-                let fraction = CGFloat(index + 1) / 9
-                let drift = Self.trailDustDrift(index)
-                let dustPoint = CGPoint(
-                    x: point.x - unitX * tailLength * fraction + normalX * drift * (1.18 - fraction),
-                    y: point.y - unitY * tailLength * fraction + normalY * drift * (1.18 - fraction)
-                )
-                let dotSize = CGFloat(index.isMultiple(of: 3) ? 2.2 : 1.35)
+            // ── 6. Sparkle particles drifting off the trail ───────────────────
+            ForEach(0..<14, id: \.self) { i in
+                let frac   = CGFloat(i + 1) / 15
+                let drift  = Self.trailDustDrift(i)
+                // Particles near the head are brighter and larger
+                let bright = 1.0 - frac
+                let sz     = CGFloat(i % 4 == 0 ? 2.8 : (i % 3 == 0 ? 2.0 : 1.2))
+                let px = point.x - unitX * tailLength * frac + normalX * drift * (1.3 - frac)
+                let py = point.y - unitY * tailLength * frac + normalY * drift * (1.3 - frac)
 
                 Circle()
-                    .fill(Color(hex: "FFEAC5").opacity(Double(0.24 * (1 - fraction))))
-                    .frame(width: dotSize, height: dotSize)
-                    .blur(radius: 0.6)
-                    .position(dustPoint)
+                    .fill(Color(hex: "FFEAC5").opacity(Double(0.55 * bright * bright)))
+                    .frame(width: sz, height: sz)
+                    .blur(radius: sz > 2 ? 0.8 : 0.3)
+                    .position(x: px, y: py)
             }
         }
     }
 
     private var metadataCard: some View {
-        // Compact pill: "Maya · finished S3"
-        Text("\(event.friend.name) · finished S\(event.season)")
-            .font(.system(size: 11, weight: .medium))
-            .foregroundColor(Color.white.opacity(0.78))
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color(hex: "0d0d18").opacity(0.72))
-            .background(.ultraThinMaterial, in: Capsule())
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-            .shadow(color: Color.black.opacity(0.35), radius: 8, y: 4)
+        HStack(spacing: 6) {
+            // Friend avatar thumbnail
+            Circle()
+                .fill(Color(hex: event.friend.hexColor).opacity(0.90))
+                .frame(width: 18, height: 18)
+                .overlay(
+                    Text(event.friend.initials)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(.white.opacity(0.90))
+                )
+                .shadow(color: Color(hex: event.friend.hexColor).opacity(0.50), radius: 4)
+
+            Text("\(event.friend.name) · finished S\(event.season)")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.90))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(Color.black.opacity(0.38), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.white.opacity(0.13), lineWidth: 0.6)
+        )
+        .shadow(color: Color.black.opacity(0.40), radius: 10, y: 4)
     }
 
     // MARK: Opacity helpers (progress-aware, freeze-aware)
@@ -2128,7 +2207,8 @@ private struct SeasonCompletionShootingStarOverlay: View {
     }
 
     private static func trailDustDrift(_ index: Int) -> CGFloat {
-        let offsets: [CGFloat] = [-4.5, 3.0, -1.4, 5.8, -6.2, 1.9, -3.3, 4.4]
+        let offsets: [CGFloat] = [-4.5, 3.0, -1.4, 5.8, -6.2, 1.9, -3.3, 4.4,
+                                    6.8, -2.7,  0.6, -5.1,  2.3, -7.0]
         return offsets[index % offsets.count]
     }
 
@@ -2212,8 +2292,8 @@ private struct ShowNodeView: View {
             appScore: node.starStep.score,
             audienceCount: node.audienceCount
         )
-        let glowRadius = style.haloRadius * 0.62 * scale
-        return -(glowRadius + starSize * 0.54 + 30)
+        let glowRadius = style.haloRadius * 0.52 * scale
+        return -(glowRadius + starSize * 0.38 + 16)
     }
 
     private static func starPhaseOffset(for showId: Int) -> Double {
@@ -2232,38 +2312,44 @@ private struct ShowNodeView: View {
 
 private struct ActiveStarWatchingBubble: View {
     let friends: [Friend]
+    private let pillHeight: CGFloat = 32
+    private let arrowW:    CGFloat = 14
+    private let arrowH:    CGFloat = 8
 
     var body: some View {
         Group {
             if !friends.isEmpty {
-                VStack(spacing: 0) {
-                    // Bubble pill
-                    FriendStackView(friends: friends, maxVisible: 4, avatarSize: 20)
-                        .padding(.horizontal, 10)
-                        .frame(height: 32)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.black.opacity(0.55))
-                                .background(.regularMaterial, in: Capsule(style: .continuous))
+                FriendStackView(friends: friends, maxVisible: 4, avatarSize: 20)
+                    .padding(.horizontal, 10)
+                    .frame(height: pillHeight)
+                    // Reserve space for the arrow below the pill content
+                    .padding(.bottom, arrowH)
+                    .background {
+                        // Layer 1 (back): blur material — clipped to the unified shape
+                        PillWithArrow(
+                            cornerRadius: pillHeight / 2,
+                            arrowWidth: arrowW,
+                            arrowHeight: arrowH
                         )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                        .fill(.ultraThinMaterial)
+                        // Layer 2: dark tint so it reads on the star field
+                        PillWithArrow(
+                            cornerRadius: pillHeight / 2,
+                            arrowWidth: arrowW,
+                            arrowHeight: arrowH
                         )
-                        .shadow(color: .black.opacity(0.60), radius: 10, y: 4)
-
-                    // Callout arrow pointing down toward the star
-                    CalloutArrow()
-                        .fill(Color.black.opacity(0.55))
-                        .frame(width: 12, height: 7)
-                        .overlay(
-                            // Matching border on the arrow edges
-                            CalloutArrow()
-                                .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                        .fill(Color.black.opacity(0.48))
+                    }
+                    .overlay {
+                        PillWithArrow(
+                            cornerRadius: pillHeight / 2,
+                            arrowWidth: arrowW,
+                            arrowHeight: arrowH
                         )
-                        .padding(.top, -1)
-                }
-                .transition(.scale(scale: 0.82, anchor: .bottom).combined(with: .opacity))
+                        .stroke(Color.white.opacity(0.20), lineWidth: 0.75)
+                    }
+                    .shadow(color: .black.opacity(0.55), radius: 8, y: 3)
+                    .transition(.scale(scale: 0.82, anchor: .bottom).combined(with: .opacity))
             }
         }
         .allowsHitTesting(true)
@@ -2271,29 +2357,56 @@ private struct ActiveStarWatchingBubble: View {
     }
 }
 
-/// Smooth callout arrow — slightly rounded tip, like the Apple Maps location bubble pointer.
-private struct CalloutArrow: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let tipX = rect.midX
-        let tipY = rect.maxY
-        let baseY = rect.minY
-        let baseLeft = rect.minX
-        let baseRight = rect.maxX
-        let corner: CGFloat = 2.0
+/// Single unified path: a capsule pill with a centred downward callout arrow
+/// built into the bottom edge — no seam, identical to UIKit/SwiftUI system popovers.
+private struct PillWithArrow: Shape {
+    var cornerRadius: CGFloat
+    var arrowWidth:   CGFloat
+    var arrowHeight:  CGFloat
 
-        path.move(to: CGPoint(x: baseLeft + corner, y: baseY))
-        path.addLine(to: CGPoint(x: baseRight - corner, y: baseY))
-        path.addQuadCurve(
-            to: CGPoint(x: tipX, y: tipY),
-            control: CGPoint(x: baseRight * 0.72, y: baseY + (tipY - baseY) * 0.4)
-        )
-        path.addQuadCurve(
-            to: CGPoint(x: baseLeft + corner, y: baseY),
-            control: CGPoint(x: baseLeft * 0.28 + tipX * 0.72, y: baseY + (tipY - baseY) * 0.4)
-        )
-        path.closeSubpath()
-        return path
+    func path(in rect: CGRect) -> Path {
+        let pillH  = rect.height - arrowHeight
+        let cr     = min(cornerRadius, pillH / 2)
+        let midX   = rect.midX
+        let aLeft  = midX - arrowWidth  / 2
+        let aRight = midX + arrowWidth  / 2
+        let tipR: CGFloat = 1.5          // slight rounding at the arrow tip
+
+        var p = Path()
+
+        // ── top-left corner
+        p.move(to: CGPoint(x: rect.minX + cr, y: rect.minY))
+        // top edge →
+        p.addLine(to: CGPoint(x: rect.maxX - cr, y: rect.minY))
+        // top-right corner
+        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + cr),
+                       control: CGPoint(x: rect.maxX, y: rect.minY))
+        // right edge ↓
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + pillH - cr))
+        // bottom-right corner
+        p.addQuadCurve(to: CGPoint(x: rect.maxX - cr, y: rect.minY + pillH),
+                       control: CGPoint(x: rect.maxX, y: rect.minY + pillH))
+        // bottom edge → arrow right shoulder
+        p.addLine(to: CGPoint(x: aRight, y: rect.minY + pillH))
+        // arrow right side ↓ → rounded tip
+        p.addLine(to: CGPoint(x: midX + tipR, y: rect.maxY - tipR * 0.5))
+        p.addQuadCurve(to: CGPoint(x: midX - tipR, y: rect.maxY - tipR * 0.5),
+                       control: CGPoint(x: midX, y: rect.maxY))
+        // arrow left side ↑ → bottom edge
+        p.addLine(to: CGPoint(x: aLeft, y: rect.minY + pillH))
+        // bottom edge ← bottom-left shoulder
+        p.addLine(to: CGPoint(x: rect.minX + cr, y: rect.minY + pillH))
+        // bottom-left corner
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.minY + pillH - cr),
+                       control: CGPoint(x: rect.minX, y: rect.minY + pillH))
+        // left edge ↑
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cr))
+        // top-left corner
+        p.addQuadCurve(to: CGPoint(x: rect.minX + cr, y: rect.minY),
+                       control: CGPoint(x: rect.minX, y: rect.minY))
+
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -2505,24 +2618,20 @@ private struct DetailPill: View {
                     Button(action: onCheckIn) {
                         HStack(spacing: 7) {
                             StelrFourPointStar(variant: .twinkle)
-                                .fill(Color.white.opacity(0.88))
+                                .fill(.white)
                                 .frame(width: 11, height: 11)
-                            Text("Vibe check")
+                            Text("Check in")
                                 .font(StelrTypography.button)
                         }
-                        .foregroundColor(.white.opacity(0.92))
+                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .background(Color.white.opacity(0.13))
-                        .background(.ultraThinMaterial)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.16), lineWidth: 0.7)
-                        )
+                        .background(Color.stelrAccent)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(color: Color.stelrAccent.opacity(0.30), radius: 10, y: 5)
                     }
                     .buttonStyle(.stelrPress)
-                    .accessibilityLabel("Vibe check")
+                    .accessibilityLabel("Check in")
                 }
             }
         }

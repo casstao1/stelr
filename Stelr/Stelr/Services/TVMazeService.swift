@@ -151,4 +151,69 @@ actor AniListService {
         let response = try decoder.decode(AniListGraphQLResponse<AniListPageData>.self, from: data)
         return response.data?.Page.media ?? []
     }
+
+    func getAnime(id: Int) async throws -> AniListMedia {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "query": """
+                query ($id: Int) {
+                  Media(id: $id, type: ANIME, isAdult: false) {
+                    id
+                    idMal
+                    title {
+                      romaji
+                      english
+                      native
+                    }
+                    description(asHtml: false)
+                    seasonYear
+                    episodes
+                    averageScore
+                    genres
+                    duration
+                    season
+                    source
+                    siteUrl
+                    countryOfOrigin
+                    startDate {
+                      year
+                      month
+                      day
+                    }
+                    endDate {
+                      year
+                      month
+                      day
+                    }
+                    studios(isMain: true) {
+                      nodes {
+                        name
+                      }
+                    }
+                    coverImage {
+                      extraLarge
+                      large
+                      medium
+                    }
+                    status
+                    format
+                  }
+                }
+                """,
+                "variables": [
+                    "id": id
+                ]
+            ]
+        )
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try decoder.decode(AniListGraphQLResponse<AniListMediaData>.self, from: data)
+        if let media = response.data?.Media {
+            return media
+        }
+        throw URLError(.cannotParseResponse)
+    }
 }

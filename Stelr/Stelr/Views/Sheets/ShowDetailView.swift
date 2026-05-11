@@ -3144,10 +3144,16 @@ private struct DetailMetadataGrid: View {
 
         if let status = show.detailMetadata?.status, !status.isEmpty {
             values.append(DetailMetadataItem(title: "Status", value: cleanMetadataValue(status), systemName: "dot.radiowaves.left.and.right"))
+        } else if show.currentEpisode.localizedCaseInsensitiveContains("finished") {
+            values.append(DetailMetadataItem(title: "Status", value: "Finished", systemName: "dot.radiowaves.left.and.right"))
         }
 
         if let type = show.detailMetadata?.type, !type.isEmpty {
             values.append(DetailMetadataItem(title: "Type", value: cleanMetadataValue(type), systemName: "rectangle.on.rectangle"))
+        } else if let animeFormat = show.detailMetadata?.animeFormat, !animeFormat.isEmpty {
+            values.append(DetailMetadataItem(title: "Type", value: cleanMetadataValue(animeFormat), systemName: "rectangle.on.rectangle"))
+        } else {
+            values.append(DetailMetadataItem(title: "Type", value: show.isAnime ? "Anime" : "TV series", systemName: "rectangle.on.rectangle"))
         }
 
         if let runtime = show.detailMetadata?.averageRuntimeMinutes
@@ -3158,6 +3164,26 @@ private struct DetailMetadataGrid: View {
 
         if let language = show.detailMetadata?.language, !language.isEmpty {
             values.append(DetailMetadataItem(title: "Language", value: language, systemName: "character.bubble"))
+        }
+
+        if let genre = show.genre?.trimmingCharacters(in: .whitespacesAndNewlines), !genre.isEmpty {
+            values.append(DetailMetadataItem(title: "Genre", value: genre, systemName: "theatermasks"))
+        }
+
+        if let year = show.year {
+            values.append(DetailMetadataItem(title: "Year", value: "\(year)", systemName: "calendar"))
+        }
+
+        if let seasons = show.seasons, seasons > 0 {
+            values.append(DetailMetadataItem(title: "Seasons", value: "\(seasons)", systemName: "square.stack.3d.up"))
+        }
+
+        if let totalEpisodes = show.totalEpisodes, totalEpisodes > 0 {
+            values.append(DetailMetadataItem(title: "Episodes", value: "\(totalEpisodes)", systemName: "list.number"))
+        }
+
+        if !show.currentEpisode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            values.append(DetailMetadataItem(title: "Current", value: show.currentEpisode, systemName: "play.tv"))
         }
 
         return values

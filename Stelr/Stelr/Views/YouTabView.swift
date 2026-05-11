@@ -31,6 +31,7 @@ struct YouTabView: View {
     @State private var showSearch      = false
     @State private var showCreateList  = false
     @State private var editingList: ShowList? = nil
+    @State private var previewList: ShowList? = nil
     @State private var selectedSection: MeSkySection = .tonight
     @State private var contentAppeared = false
 
@@ -92,6 +93,12 @@ struct YouTabView: View {
             CreateListSheet(editingList: editingList)
                 .environmentObject(appState)
         }
+        .fullScreenCover(item: $previewList) { list in
+            ListConstellationView(list: list) {
+                previewList = nil
+            }
+            .environmentObject(appState)
+        }
         .sheet(isPresented: $showAuthSheet) {
             ProfileSettingsSheet(
                 onSignIn: {
@@ -137,6 +144,9 @@ struct YouTabView: View {
                         .font(StelrTypography.metadata)
                         .foregroundStyle(.secondary)
                 }
+
+                TasteAuraBadge(aura: tasteAura)
+                    .padding(.top, 2)
 
                 HStack(alignment: .center, spacing: 30) {
                     meProfileStat(value: "\(max(127, watchedEpisodeCount))", label: "eps")
@@ -213,9 +223,19 @@ struct YouTabView: View {
         case .lists:
             MeListsSection(
                 lists: appState.myLists,
+                onAdd: {
+                    editingList = nil
+                    showCreateList = true
+                },
+                onOpen: { list in
+                    previewList = list
+                },
                 onEdit: { list in
                     editingList = list
                     showCreateList = true
+                },
+                onDelete: { list in
+                    appState.deleteList(id: list.id)
                 }
             )
         }
@@ -227,6 +247,15 @@ struct YouTabView: View {
 
     private var watchlistShows: [Show] {
         appState.watchlistShows
+    }
+
+    private var tasteAura: TasteAura {
+        TasteAura.make(
+            myShows: appState.myShows,
+            allShows: appState.shows,
+            lists: appState.myLists,
+            watchlistShows: appState.watchlistShows
+        )
     }
 
     private func meProfileStat(value: String, label: String) -> some View {
@@ -507,7 +536,10 @@ private struct MeCrewSection: View {
 
 private struct MeListsSection: View {
     let lists: [ShowList]
+    var onAdd: () -> Void
+    var onOpen: (ShowList) -> Void
     var onEdit: (ShowList) -> Void
+    var onDelete: (ShowList) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -517,6 +549,20 @@ private struct MeListsSection: View {
                     .tracking(2.4)
                     .foregroundColor(.stelrMuted)
                 Spacer()
+                Button(action: onAdd) {
+                    Label("Add list", systemImage: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.stelrText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.07), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.stelrBorder, lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.stelrPress)
+                .accessibilityLabel("Add list")
             }
 
             if lists.isEmpty {
@@ -536,7 +582,7 @@ private struct MeListsSection: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(lists) { list in
-                        Button { onEdit(list) } label: {
+                        Button { onOpen(list) } label: {
                             HStack(spacing: 14) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(list.title)
@@ -562,6 +608,19 @@ private struct MeListsSection: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                         .buttonStyle(.stelrPress)
+                        .contextMenu {
+                            Button {
+                                onEdit(list)
+                            } label: {
+                                Label("Edit list", systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                onDelete(list)
+                            } label: {
+                                Label("Delete list", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
@@ -773,6 +832,364 @@ private struct ProfilePhotoAvatar: View {
                     .foregroundColor(Color(hex: "130B05"))
             }
         }
+    }
+}
+
+struct TasteAura: Equatable {
+    let title: String
+    let detail: String
+    let accentHex: String
+
+    static func make(
+        myShows: [MyShow],
+        allShows: [Show],
+        lists: [ShowList] = [],
+        watchlistShows: [Show] = []
+    ) -> TasteAura {
+        let showById = Dictionary(uniqueKeysWithValues: allShows.map { ($0.id, $0) })
+        var signals: [TasteAuraSignal] = []
+
+        for myShow in myShows {
+            guard let show = showById[myShow.showId] else { continue }
+            signals.append(TasteAuraSignal(show: show, myShow: myShow, weight: 1.0))
+        }
+
+        let activeIds = Set(signals.map(\.show.id))
+        for entry in lists.flatMap(\.entries) {
+            guard let showId = entry.showId,
+                  let show = showById[showId],
+                  !activeIds.contains(show.id) else { continue }
+            signals.append(TasteAuraSignal(show: show, myShow: nil, weight: 0.36))
+        }
+
+        for show in watchlistShows where !signals.contains(where: { $0.show.id == show.id }) {
+            signals.append(TasteAuraSignal(show: show, myShow: nil, weight: 0.24))
+        }
+
+        guard signals.count >= 2 else {
+            return TasteAura(
+                title: "taste aura forming",
+                detail: "Add a few shows to reveal your pattern.",
+                accentHex: "E5604A"
+            )
+        }
+
+        let categoryScores = weightedCategoryScores(for: signals)
+        let topCategories = categoryScores
+            .sorted { lhs, rhs in
+                if abs(lhs.value - rhs.value) < 0.001 { return lhs.key < rhs.key }
+                return lhs.value > rhs.value
+            }
+            .map(\.key)
+        let mood = moodWord(for: signals, categoryScores: categoryScores)
+        let genrePhrase = genrePhrase(for: topCategories, signals: signals, categoryScores: categoryScores)
+        let archetype = archetype(for: signals, categoryScores: categoryScores, genrePhrase: genrePhrase)
+        let title = [mood, genrePhrase, archetype]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let accentHex = dominantAccentHex(for: signals, categoryScores: categoryScores)
+        let detail = detailText(for: signals, topCategories: topCategories)
+
+        return TasteAura(
+            title: title.isEmpty ? "eclectic show watcher" : title,
+            detail: detail,
+            accentHex: accentHex
+        )
+    }
+
+    private static func weightedCategoryScores(for signals: [TasteAuraSignal]) -> [String: Double] {
+        var scores: [String: Double] = [:]
+        for signal in signals {
+            let scoreBoost = max(0.72, min(1.28, signal.score / 3.6))
+            for category in categories(for: signal.show) {
+                scores[category, default: 0] += signal.weight * scoreBoost
+            }
+        }
+        return scores
+    }
+
+    private static func categories(for show: Show) -> Set<String> {
+        let text = [
+            show.title,
+            show.genre ?? "",
+            show.platform,
+            show.platforms?.joined(separator: " ") ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        var categories = Set<String>()
+
+        if text.contains("sci-fi") || text.contains("science fiction") || text.contains("sci fi") {
+            categories.insert("sci-fi")
+        }
+        if text.contains("romance") || text.contains("romantic") {
+            categories.insert("romance")
+        }
+        if text.contains("sitcom") {
+            categories.insert("sitcom")
+        }
+        if text.contains("comedy") || text.contains("comic") {
+            categories.insert("comedy")
+        }
+        if text.contains("drama") {
+            categories.insert("drama")
+        }
+        if text.contains("thriller") || text.contains("mystery") || text.contains("spy") {
+            categories.insert("thriller")
+        }
+        if text.contains("crime") || text.contains("detective") {
+            categories.insert("crime")
+        }
+        if text.contains("horror") || text.contains("dark") {
+            categories.insert("dark")
+        }
+        if text.contains("historical") || text.contains("period") {
+            categories.insert("historical")
+        }
+        if text.contains("anime") || show.isAnime {
+            categories.insert("anime")
+        }
+        if text.contains("fantasy") {
+            categories.insert("fantasy")
+        }
+        if text.contains("action") || text.contains("adventure") {
+            categories.insert("adrenaline")
+        }
+        if text.contains("reality") || text.contains("competition") {
+            categories.insert("reality")
+        }
+
+        if categories.isEmpty {
+            categories.insert("eclectic")
+        }
+        return categories
+    }
+
+    private static func moodWord(for signals: [TasteAuraSignal], categoryScores: [String: Double]) -> String {
+        let totalWeight = max(1, signals.reduce(0) { $0 + $1.weight })
+        let darkWeight = score(for: ["dark", "crime", "thriller"], in: categoryScores)
+        let comfortWeight = score(for: ["comedy", "sitcom"], in: categoryScores)
+        let sciFiDramaWeight = min(categoryScores["sci-fi", default: 0], categoryScores["drama", default: 0])
+        let averageScore = weightedAverageScore(for: signals)
+        let averageProgress = averageProgress(for: signals)
+
+        if comfortWeight >= totalWeight * 0.48 && averageScore >= 3.2 {
+            return "comfort"
+        }
+        if darkWeight >= totalWeight * 0.76 {
+            return "chaotic"
+        }
+        if sciFiDramaWeight > 0.45 || (categoryScores["romance", default: 0] > 0 && categoryScores["sci-fi", default: 0] > 0) {
+            return "melancholic"
+        }
+        if averageScore >= 4.35 {
+            return "devoted"
+        }
+        if averageProgress >= 0.78 {
+            return "completionist"
+        }
+        if categoryScores["historical", default: 0] > totalWeight * 0.36 {
+            return "slow-burn"
+        }
+        if categoryScores["adrenaline", default: 0] > totalWeight * 0.36 {
+            return "high-velocity"
+        }
+        return "eclectic"
+    }
+
+    private static func genrePhrase(
+        for topCategories: [String],
+        signals: [TasteAuraSignal],
+        categoryScores: [String: Double]
+    ) -> String {
+        let prestigeDrama = categoryScores["drama", default: 0] > 0.55 && signals.contains { signal in
+            categories(for: signal.show).contains("drama") && isPrestigePlatform(signal.show)
+        }
+
+        if categoryScores["sci-fi", default: 0] > 0 && categoryScores["romance", default: 0] > 0 {
+            return "sci-fi romantic"
+        }
+        if prestigeDrama {
+            return "prestige drama"
+        }
+        if categoryScores["sitcom", default: 0] > 0 || categoryScores["comedy", default: 0] >= max(0.8, categoryScores["drama", default: 0]) {
+            return "sitcom"
+        }
+        if categoryScores["anime", default: 0] > 0 {
+            return "anime"
+        }
+        if categoryScores["historical", default: 0] > 0 && categoryScores["drama", default: 0] > 0 {
+            return "historical drama"
+        }
+        if categoryScores["crime", default: 0] > 0 && categoryScores["thriller", default: 0] > 0 {
+            return "crime thriller"
+        }
+        if categoryScores["sci-fi", default: 0] > 0 {
+            return "sci-fi"
+        }
+        if let first = topCategories.first, first != "eclectic" {
+            return first
+        }
+        return "mixed-genre"
+    }
+
+    private static func archetype(
+        for signals: [TasteAuraSignal],
+        categoryScores: [String: Double],
+        genrePhrase: String
+    ) -> String {
+        let averageProgress = averageProgress(for: signals)
+        if genrePhrase == "sitcom" && averageProgress > 0.34 {
+            return "midnight watcher"
+        }
+        if signals.filter({ $0.myShow != nil }).count >= 5 {
+            return "rotation keeper"
+        }
+        if averageProgress >= 0.86 {
+            return "completionist"
+        }
+        if score(for: ["dark", "crime", "thriller"], in: categoryScores) > 1.7 {
+            return "watcher"
+        }
+        return "watcher"
+    }
+
+    private static func detailText(for signals: [TasteAuraSignal], topCategories: [String]) -> String {
+        let activeCount = signals.filter { $0.myShow != nil }.count
+        let top = topCategories
+            .prefix(2)
+            .filter { $0 != "eclectic" }
+            .joined(separator: " + ")
+        let progress = averageProgress(for: signals)
+        let pace = progress >= 0.72 ? "deep into seasons" : progress >= 0.34 ? "mid-season" : "early in rotation"
+        let taste = top.isEmpty ? "mixed genres" : top
+        return "\(activeCount) active show\(activeCount == 1 ? "" : "s") | \(taste) | \(pace)"
+    }
+
+    private static func dominantAccentHex(for signals: [TasteAuraSignal], categoryScores: [String: Double]) -> String {
+        if score(for: ["dark", "crime", "thriller"], in: categoryScores) > 1.7 {
+            return "B6C7FF"
+        }
+        if categoryScores["comedy", default: 0] > 0.8 || categoryScores["sitcom", default: 0] > 0 {
+            return "F0C36A"
+        }
+        if categoryScores["sci-fi", default: 0] > 0 {
+            return "8FD9FF"
+        }
+        return signals.max { $0.weightedScore < $1.weightedScore }?.show.accentColor ?? "E5604A"
+    }
+
+    private static func score(for categories: [String], in categoryScores: [String: Double]) -> Double {
+        categories.reduce(0) { $0 + categoryScores[$1, default: 0] }
+    }
+
+    private static func weightedAverageScore(for signals: [TasteAuraSignal]) -> Double {
+        let weight = max(0.001, signals.reduce(0) { $0 + $1.weight })
+        return signals.reduce(0) { $0 + $1.score * $1.weight } / weight
+    }
+
+    private static func averageProgress(for signals: [TasteAuraSignal]) -> Double {
+        let active = signals.compactMap(\.myShow)
+        guard !active.isEmpty else { return 0 }
+        return active.reduce(0) { total, show in
+            total + min(1, Double(show.currentEpisode) / Double(max(1, show.totalEpisodes)))
+        } / Double(active.count)
+    }
+
+    private static func isPrestigePlatform(_ show: Show) -> Bool {
+        let platformText = ([show.platform] + (show.platforms ?? [])).joined(separator: " ").lowercased()
+        return ["hbo", "max", "fx", "hulu", "apple", "netflix"].contains { platformText.contains($0) }
+    }
+}
+
+private struct TasteAuraSignal {
+    let show: Show
+    let myShow: MyShow?
+    let weight: Double
+
+    var score: Double {
+        if let myShow, myShow.score >= 1 {
+            return myShow.score
+        }
+        return show.globalRating.map { $0 > 5 ? max(1, min(5, $0 / 2)) : max(1, min(5, $0)) } ?? 3.5
+    }
+
+    var weightedScore: Double {
+        score * weight
+    }
+}
+
+struct TasteAuraBadge: View {
+    let aura: TasteAura
+    var compact = false
+
+    var body: some View {
+        VStack(spacing: compact ? 3 : 4) {
+            Text("TASTE AURA")
+                .font(StelrTypography.microLabel)
+                .tracking(1.8)
+                .foregroundColor(accent.opacity(0.86))
+
+            Text(aura.title)
+                .font(.system(size: compact ? 14 : 15.5, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.stelrText, accent.opacity(0.92)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .lineLimit(2)
+                .minimumScaleFactor(0.78)
+                .multilineTextAlignment(.center)
+
+            Text(aura.detail)
+                .font(StelrTypography.metadata)
+                .foregroundColor(.stelrMuted.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+        }
+        .padding(.horizontal, compact ? 14 : 16)
+        .padding(.vertical, compact ? 9 : 10)
+        .frame(maxWidth: compact ? .infinity : 320)
+        .background(
+            ZStack {
+                RadialGradient(
+                    colors: [
+                        accent.opacity(0.15),
+                        accent.opacity(0.045),
+                        .clear
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 148
+                )
+                Rectangle()
+                    .fill(Color.white.opacity(0.025))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            accent.opacity(0.24),
+                            Color.white.opacity(0.075),
+                            Color.white.opacity(0.030)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.75
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var accent: Color {
+        Color(hex: aura.accentHex)
     }
 }
 
@@ -1466,4 +1883,640 @@ private struct YouShowRow: View {
 	    }
 	    .padding(.vertical, 22)
 	}
+}
+
+struct ListConstellationView: View {
+    let list: ShowList
+    var onBack: () -> Void
+
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let topClearance = max(geo.safeAreaInsets.top + 34, 76)
+            let headerHeight = topClearance + 112
+            let bottomInset = max(geo.safeAreaInsets.bottom, 16) + 24
+            let contentHeight = max(320, geo.size.height - headerHeight - bottomInset)
+            let bandHeight = contentHeight / 5
+            let slots = resolvedSlots
+            let filledSlots = slots.filter(\.isFilled)
+            let points = filledSlots.map {
+                ListConstellationLayout.starPoint(
+                    index: $0.index,
+                    size: geo.size,
+                    headerHeight: headerHeight,
+                    bandHeight: bandHeight
+                )
+            }
+
+            ZStack(alignment: .top) {
+                StelrStarFieldBackground(includesRadialBloom: true, starCount: 120)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+
+                ListConstellationAmbient(slots: filledSlots)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+
+                ListConstellationLines(points: points)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .opacity(appeared ? 1 : 0)
+                    .animation(.easeOut(duration: 0.42).delay(0.12), value: appeared)
+                    .allowsHitTesting(false)
+
+                ForEach(slots) { slot in
+                    let y = headerHeight + CGFloat(slot.index) * bandHeight + bandHeight / 2
+                    ListConstellationSlotView(
+                        slot: slot,
+                        appeared: appeared,
+                        animateStars: appeared && !reduceMotion
+                    )
+                    .frame(width: geo.size.width, height: bandHeight)
+                    .position(x: geo.size.width / 2, y: y)
+                    .allowsHitTesting(false)
+                }
+
+                ListConstellationHeader(
+                    title: list.title,
+                    filledCount: filledSlots.count,
+                    topPadding: topClearance,
+                    onBack: handleBack
+                )
+                .zIndex(10)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .background(Color.stelrBg)
+            .onAppear {
+                appeared = false
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
+                        appeared = true
+                    }
+                }
+            }
+            .task(id: list.id) {
+                await appState.restoreMissingListShows(for: list)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func handleBack() {
+        onBack()
+        dismiss()
+    }
+
+    private var resolvedSlots: [ListConstellationResolvedSlot] {
+        (0..<5).map { index in
+            let rank = index + 1
+            let entry = list.slots[index]
+            let show = entry.flatMap { appState.show(forListEntry: $0) }
+            let watchers = show.map { appState.friendsWatching(showId: $0.id) } ?? []
+            let myShow = show.flatMap { appState.myShow(for: $0.id) }
+            let score = displayScore(show: show, myShow: myShow, watchers: watchers)
+            let audienceCount = max(1, watchers.count + (myShow == nil ? 0 : 1))
+
+            return ListConstellationResolvedSlot(
+                index: index,
+                rank: rank,
+                entry: entry,
+                show: show,
+                myShow: myShow,
+                title: title(for: entry, show: show, rank: rank),
+                metaLine: metaLine(for: show, entry: entry),
+                progressLine: progressLine(for: show, myShow: myShow),
+                summary: summary(for: show, entry: entry),
+                score: score,
+                audienceCount: audienceCount,
+                watchers: watchers
+            )
+        }
+    }
+
+    private func title(for entry: ShowListEntry?, show: Show?, rank: Int) -> String {
+        if let show { return show.title }
+        if let title = entry?.freeTextTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            return title
+        }
+        if entry?.showId != nil {
+            return "Loading show..."
+        }
+        return "Open rank"
+    }
+
+    private func metaLine(for show: Show?, entry: ShowListEntry?) -> String {
+        guard let show else {
+            if entry?.showId != nil { return "Restoring saved show" }
+            if entry?.freeTextTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                return "Custom entry"
+            }
+            return "Open rank"
+        }
+
+        var pieces: [String] = []
+        if let genre = show.genre, !genre.isEmpty {
+            pieces.append(genre)
+        }
+        if let year = show.year {
+            pieces.append("\(year)")
+        }
+        if pieces.isEmpty {
+            pieces.append(show.platform)
+        }
+        return pieces.joined(separator: "  |  ")
+    }
+
+    private func progressLine(for show: Show?, myShow: MyShow?) -> String {
+        if let myShow {
+            return "S\(myShow.currentSeason)  |  E\(myShow.currentEpisode)/\(max(1, myShow.totalEpisodes))"
+        }
+        guard let show else { return "Awaiting a star" }
+        if let seasons = show.seasons, let totalEpisodes = show.totalEpisodes {
+            return "\(seasons) season\(seasons == 1 ? "" : "s")  |  \(totalEpisodes) eps"
+        }
+        if let totalEpisodes = show.totalEpisodes {
+            return "\(totalEpisodes) eps"
+        }
+        return show.currentEpisode
+    }
+
+    private func summary(for show: Show?, entry: ShowListEntry?) -> String? {
+        if let note = entry?.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return note
+        }
+        return show?.summary
+    }
+
+    private func displayScore(show: Show?, myShow: MyShow?, watchers: [Friend]) -> Double {
+        if let myShow, myShow.score >= 1 {
+            return myShow.score
+        }
+        let watcherScores = watchers.map(\.score).filter { $0 >= 1 && $0 <= 5 }
+        if !watcherScores.isEmpty {
+            return watcherScores.reduce(0, +) / Double(watcherScores.count)
+        }
+        if let globalRating = show?.globalRating {
+            return globalRating > 5 ? max(1, min(5, globalRating / 2)) : max(1, min(5, globalRating))
+        }
+        return show == nil ? 2.8 : 3.6
+    }
+}
+
+private struct ListConstellationResolvedSlot: Identifiable {
+    let index: Int
+    let rank: Int
+    let entry: ShowListEntry?
+    let show: Show?
+    let myShow: MyShow?
+    let title: String
+    let metaLine: String
+    let progressLine: String
+    let summary: String?
+    let score: Double
+    let audienceCount: Int
+    let watchers: [Friend]
+
+    var id: Int { rank }
+    var isFilled: Bool {
+        guard let entry else { return false }
+        if show != nil || entry.showId != nil { return true }
+        return entry.freeTextTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+}
+
+private enum ListConstellationLayout {
+    private static let starFractions: [CGFloat] = [0.23, 0.77, 0.29, 0.71, 0.48]
+
+    static func starFraction(for index: Int) -> CGFloat {
+        starFractions[index % starFractions.count]
+    }
+
+    static func isStarOnLeft(index: Int) -> Bool {
+        starFraction(for: index) < 0.5
+    }
+
+    static func starPoint(index: Int, size: CGSize, headerHeight: CGFloat, bandHeight: CGFloat) -> CGPoint {
+        CGPoint(
+            x: size.width * starFraction(for: index),
+            y: headerHeight + CGFloat(index) * bandHeight + bandHeight / 2
+        )
+    }
+}
+
+private struct ListConstellationHeader: View {
+    let title: String
+    let filledCount: Int
+    let topPadding: CGFloat
+    var onBack: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Button {
+                StelrHaptics.lightTap()
+                onBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.stelrText)
+                    .frame(width: 48, height: 48)
+                    .background(Color.white.opacity(0.08), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.8))
+            }
+            .buttonStyle(.stelrPress)
+            .contentShape(Circle())
+            .accessibilityLabel("Back")
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("LIST SKY")
+                    .font(StelrTypography.microLabel)
+                    .tracking(2.2)
+                    .foregroundColor(.stelrAccent.opacity(0.88))
+
+                Text(title)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.stelrText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.76)
+
+                Text("\(filledCount) show\(filledCount == 1 ? "" : "s")")
+                    .font(StelrTypography.metadata)
+                    .foregroundColor(.stelrMuted)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, topPadding)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 12)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.stelrBg.opacity(0.98),
+                    Color.stelrBg.opacity(0.76),
+                    Color.stelrBg.opacity(0.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: topPadding + 128)
+            .ignoresSafeArea(edges: .top)
+        )
+    }
+}
+
+private struct ListConstellationSlotView: View {
+    let slot: ListConstellationResolvedSlot
+    let appeared: Bool
+    let animateStars: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let starX = geo.size.width * ListConstellationLayout.starFraction(for: slot.index)
+            let starOnLeft = ListConstellationLayout.isStarOnLeft(index: slot.index)
+            let detailsX = geo.size.width * (starOnLeft ? 0.68 : 0.32)
+            let cardWidth = min(max(geo.size.width * 0.52, 190), 246)
+            let centerY = geo.size.height / 2
+            let compact = geo.size.height < 116
+
+            ZStack {
+                ListConstellationMicroStars(seed: slot.rank, accent: accentColor)
+                    .opacity(slot.isFilled ? 1 : 0.18)
+
+                ListConstellationShowStar(slot: slot, animate: animateStars, compact: compact)
+                    .position(x: starX, y: centerY)
+                    .opacity(appeared ? (slot.isFilled ? 1 : 0.16) : 0)
+                    .scaleEffect(appeared ? 1 : 0.74)
+                    .animation(
+                        .spring(response: 0.38, dampingFraction: 0.74)
+                            .delay(Double(slot.index) * 0.055),
+                        value: appeared
+                    )
+
+                if slot.isFilled {
+                    ListConstellationDetailCard(slot: slot, compact: compact)
+                        .frame(width: cardWidth)
+                        .position(x: detailsX, y: centerY)
+                        .opacity(appeared ? 1 : 0)
+                        .offset(x: appeared ? 0 : (starOnLeft ? 16 : -16))
+                        .animation(
+                            .spring(response: 0.42, dampingFraction: 0.82)
+                                .delay(0.05 + Double(slot.index) * 0.055),
+                            value: appeared
+                        )
+                }
+            }
+        }
+    }
+
+    private var accentColor: Color {
+        if let show = slot.show {
+            return Color(hex: show.accentColor)
+        }
+        return H7bStarVisualStyle(appScore: slot.score).color
+    }
+}
+
+private struct ListConstellationShowStar: View {
+    let slot: ListConstellationResolvedSlot
+    let animate: Bool
+    let compact: Bool
+
+    var body: some View {
+        ZStack {
+            StarGlowView(
+                score: slot.score,
+                maxCoreSize: compact ? 46 : 58,
+                animate: animate,
+                audienceCount: slot.audienceCount,
+                phaseOffset: Double(slot.rank) * 0.72,
+                timingJitter: 0.92 + Double(slot.rank) * 0.035
+            )
+
+            if slot.isFilled {
+                rankBadge
+                    .offset(x: compact ? 26 : 33, y: compact ? -23 : -30)
+
+                if let show = slot.show {
+                    ShowPosterView(show: show, width: compact ? 34 : 42, height: compact ? 48 : 58, radius: 8)
+                        .shadow(color: .black.opacity(0.42), radius: 9, y: 5)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.white.opacity(0.16), lineWidth: 0.7)
+                        )
+                        .offset(x: compact ? -28 : -38, y: compact ? 19 : 25)
+                } else {
+                    Text(String(slot.title.prefix(1)).uppercased())
+                        .font(.system(size: compact ? 16 : 19, weight: .bold))
+                        .foregroundColor(.stelrText)
+                        .frame(width: compact ? 34 : 42, height: compact ? 34 : 42)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.8))
+                        .offset(x: compact ? -26 : -34, y: compact ? 18 : 24)
+                }
+            } else {
+                Circle()
+                    .stroke(Color.white.opacity(0.16), style: StrokeStyle(lineWidth: 1, dash: [3, 6]))
+                    .frame(width: compact ? 44 : 54, height: compact ? 44 : 54)
+            }
+        }
+        .frame(width: compact ? 116 : 142, height: compact ? 98 : 124)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(slot.isFilled ? "Rank \(slot.rank), \(slot.title)" : "Rank \(slot.rank), empty")
+    }
+
+    private var rankBadge: some View {
+        Text("#\(slot.rank)")
+            .font(StelrTypography.microLabel)
+            .monospacedDigit()
+            .foregroundColor(Color(hex: "120A07"))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.stelrAccent.opacity(0.92), in: Capsule())
+            .shadow(color: Color.stelrAccent.opacity(0.24), radius: 8, y: 4)
+    }
+}
+
+private struct ListConstellationDetailCard: View {
+    let slot: ListConstellationResolvedSlot
+    let compact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 4 : 6) {
+            HStack(spacing: 7) {
+                Text(rankLabel)
+                    .font(StelrTypography.microLabel)
+                    .tracking(1.2)
+                    .foregroundColor(accent.opacity(slot.isFilled ? 0.95 : 0.52))
+
+                Spacer(minLength: 6)
+
+                if slot.isFilled {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("\(max(0, slot.audienceCount - (slot.myShow == nil ? 0 : 1)))")
+                            .font(StelrTypography.microLabel)
+                            .monospacedDigit()
+                    }
+                    .foregroundColor(.stelrMuted.opacity(0.74))
+                }
+            }
+
+            Text(slot.title)
+                .font(compact ? StelrTypography.calloutStrong : StelrTypography.cardTitle)
+                .foregroundColor(slot.isFilled ? .stelrText : .stelrMuted.opacity(0.58))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(slot.metaLine)
+                .font(StelrTypography.metadata)
+                .foregroundColor(.stelrMuted.opacity(slot.isFilled ? 0.78 : 0.48))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            HStack(spacing: 7) {
+                StelrFourPointStar(variant: .twinkle)
+                    .fill(accent.opacity(slot.isFilled ? 0.92 : 0.40))
+                    .frame(width: 10, height: 10)
+
+                Text(scoreText)
+                    .font(StelrTypography.metadataStrong)
+                    .foregroundColor(slot.isFilled ? accent.opacity(0.92) : .stelrMuted.opacity(0.48))
+                    .monospacedDigit()
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 1, height: 10)
+
+                Text(slot.progressLine)
+                    .font(StelrTypography.metadata)
+                    .foregroundColor(.stelrMuted.opacity(slot.isFilled ? 0.72 : 0.42))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            if !compact, let summary = slot.summary, slot.isFilled {
+                Text(summary)
+                    .font(StelrTypography.metadata)
+                    .foregroundColor(.stelrMuted.opacity(0.70))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 1)
+            }
+        }
+        .padding(.horizontal, compact ? 10 : 12)
+        .padding(.vertical, compact ? 9 : 11)
+        .background(cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(slot.isFilled ? 0.14 : 0.055),
+                            accent.opacity(slot.isFilled ? 0.18 : 0.055),
+                            Color.white.opacity(0.035)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.8
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(slot.isFilled ? 0.26 : 0.12), radius: 16, y: 8)
+    }
+
+    private var rankLabel: String {
+        "RANK \(slot.rank)"
+    }
+
+    private var scoreText: String {
+        slot.isFilled ? String(format: "%.1f", slot.score) : "empty"
+    }
+
+    private var accent: Color {
+        if let show = slot.show {
+            return Color(hex: show.accentColor)
+        }
+        return H7bStarVisualStyle(appScore: slot.score).color
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(slot.isFilled ? 0.055 : 0.025),
+                                Color(hex: "10131F").opacity(slot.isFilled ? 0.52 : 0.30),
+                                Color(hex: "050712").opacity(slot.isFilled ? 0.46 : 0.24)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                accent.opacity(slot.isFilled ? 0.11 : 0.035),
+                                .clear
+                            ],
+                            center: .topLeading,
+                            startRadius: 0,
+                            endRadius: 160
+                        )
+                    )
+            )
+    }
+}
+
+private struct ListConstellationLines: View {
+    let points: [CGPoint]
+
+    var body: some View {
+        Canvas { context, _ in
+            guard points.count > 1 else { return }
+
+            var path = Path()
+            path.move(to: points[0])
+            for point in points.dropFirst() {
+                path.addLine(to: point)
+            }
+
+            context.stroke(
+                path,
+                with: .color(Color.stelrAccent.opacity(0.12)),
+                style: StrokeStyle(lineWidth: 4.2, lineCap: .round, lineJoin: .round)
+            )
+
+            context.stroke(
+                path,
+                with: .color(Color(hex: "BECDFF").opacity(0.24)),
+                style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round, dash: [4, 9])
+            )
+
+            for point in points {
+                let glowRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
+                context.fill(Path(ellipseIn: glowRect), with: .color(Color.white.opacity(0.18)))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct ListConstellationAmbient: View {
+    let slots: [ListConstellationResolvedSlot]
+
+    var body: some View {
+        ZStack {
+            ForEach(slots) { slot in
+                RadialGradient(
+                    colors: [
+                        accent(for: slot).opacity(0.10),
+                        accent(for: slot).opacity(0.026),
+                        .clear
+                    ],
+                    center: UnitPoint(
+                        x: ListConstellationLayout.starFraction(for: slot.index),
+                        y: 0.22 + CGFloat(slot.index) * 0.155
+                    ),
+                    startRadius: 0,
+                    endRadius: 230
+                )
+                .blendMode(.screen)
+            }
+
+            LinearGradient(
+                colors: [
+                    Color.clear,
+                    Color(hex: "080A14").opacity(0.20),
+                    Color(hex: "120706").opacity(0.26)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    private func accent(for slot: ListConstellationResolvedSlot) -> Color {
+        if let show = slot.show {
+            return Color(hex: show.accentColor)
+        }
+        return H7bStarVisualStyle(appScore: slot.score).color
+    }
+}
+
+private struct ListConstellationMicroStars: View {
+    let seed: Int
+    let accent: Color
+
+    var body: some View {
+        Canvas { context, size in
+            guard size.width > 0, size.height > 0 else { return }
+            for index in 0..<14 {
+                let x = size.width * deterministicUnit(seed * 97 + index * 31)
+                let y = size.height * deterministicUnit(seed * 53 + index * 47)
+                let radius = 0.7 + deterministicUnit(seed * 17 + index * 19) * 1.4
+                let color = index % 5 == 0 ? accent.opacity(0.26) : Color.white.opacity(0.11)
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x, y: y, width: radius, height: radius)),
+                    with: .color(color)
+                )
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func deterministicUnit(_ value: Int) -> CGFloat {
+        let mixed = sin(Double(value) * 12.9898) * 43758.5453
+        return CGFloat(mixed - floor(mixed))
+    }
 }

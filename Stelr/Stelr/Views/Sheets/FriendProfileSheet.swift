@@ -59,34 +59,14 @@ struct FriendProfileSheet: View {
         }
         return shows
     }
-    private var compatibilityScore: Int {
-        let myShowIds = Set(appState.myShows.map(\.showId))
-        let friendShowIds = Set(friend.watchedShowIds)
-        let unionCount = max(1, myShowIds.union(friendShowIds).count)
-        let overlapScore = Double(myShowIds.intersection(friendShowIds).count) / Double(unionCount)
-        let myAverage = appState.myShows.filter { $0.score > 0 }.map(\.score).average
-        let tasteScore: Double
-        if let myAverage {
-            tasteScore = max(0, 1 - abs(myAverage - friend.score) / 4.0)
-        } else {
-            tasteScore = 0.55
-        }
-        return Int(round((overlapScore * 0.62 + tasteScore * 0.38) * 100))
-    }
-    private var compatibilityLabel: String {
-        switch compatibilityScore {
-        case 80...100: return "high overlap"
-        case 58..<80:  return "strong match"
-        case 35..<58:  return "some shared taste"
-        default:       return "new orbit"
-        }
-    }
-    private var compatibilitySubtitle: String {
-        let count = sharedShows.count
-        if count > 0 {
-            return "\(count) shared show\(count == 1 ? "" : "s") plus similar rating energy."
-        }
-        return "Start watching the same show to build compatibility."
+    private var tasteCompatibility: FriendTasteCompatibility {
+        FriendTasteCompatibility.make(
+            friend: friend,
+            myShows: appState.myShows,
+            allShows: appState.shows,
+            activities: appState.activities,
+            highlightedShowId: highlightedShowId
+        )
     }
     private var vibe: VibeOption { friend.vibe }
     private var friendRatingColor: Color {
@@ -125,10 +105,7 @@ struct FriendProfileSheet: View {
 
                     FriendCompatibilityCard(
                         friend: friend,
-                        score: compatibilityScore,
-                        label: compatibilityLabel,
-                        subtitle: compatibilitySubtitle,
-                        sharedShows: Array(sharedShows.prefix(3)),
+                        compatibility: tasteCompatibility,
                         onOpenShow: { show in detailShow = show }
                     )
                     .padding(.horizontal, 24)
@@ -438,19 +415,227 @@ struct FriendProfileSheet: View {
     }
 }
 
-private struct FriendCompatibilityCard: View {
-    let friend: Friend
+private struct FriendTasteCompatibility {
     let score: Int
     let label: String
     let subtitle: String
     let sharedShows: [Show]
+    let sharedGenres: [String]
+    let ratingLine: String
+
+    static func make(
+        friend: Friend,
+        myShows: [MyShow],
+        allShows: [Show],
+        activities: [Activity],
+        highlightedShowId: Int?
+    ) -> FriendTasteCompatibility {
+        let showById = Dictionary(uniqueKeysWithValues: allShows.map { ($0.id, $0) })
+        let myShowById = Dictionary(uniqueKeysWithValues: myShows.map { ($0.showId, $0) })
+        let myShowIds = Set(myShows.map(\.showId))
+        let friendShowIds = Set(friend.watchedShowIds)
+        let sharedIds = myShowIds.intersection(friendShowIds)
+        var sharedShows = sharedIds.compactMap { showById[$0] }
+        if let highlightedShowId, let index = sharedShows.firstIndex(where: { $0.id == highlightedShowId }) {
+            let highlighted = sharedShows.remove(at: index)
+            sharedShows.insert(highlighted, at: 0)
+        }
+
+        let myCategoryScores = categoryScores(
+            shows: myShows.compactMap { myShow in
+                showById[myShow.showId].map { (show: $0, score: myShow.score, weight: 1.0) }
+            }
+        )
+        let friendCategoryScores = categoryScores(
+            shows: friend.watchedShowIds.compactMap { showId in
+                guard let show = showById[showId] else { return nil }
+                return (
+                    show: show,
+                    score: friendScore(for: showId, friend: friend, activities: activities),
+                    weight: showId == friend.currentShowId ? 1.0 : 0.76
+                )
+            }
+        )
+
+        let overlapRatio = Double(sharedIds.count) / Double(max(1, min(max(1, myShowIds.count), max(1, friendShowIds.count))))
+        let categoryOverlap = weightedJaccard(myCategoryScores, friendCategoryScores)
+        let ratingAlignment = ratingAlignment(
+            sharedIds: sharedIds,
+            myShowById: myShowById,
+            friend: friend,
+            activities: activities,
+            myShows: myShows
+        )
+        let score = Int(round((overlapRatio * 0.40 + categoryOverlap * 0.38 + ratingAlignment * 0.22) * 100))
+        let sharedGenres = strongestSharedGenres(myCategoryScores, friendCategoryScores)
+        let label = label(for: score, sharedCount: sharedShows.count)
+        let subtitle = subtitleText(score: score, sharedShows: sharedShows, sharedGenres: sharedGenres)
+        let ratingLine = ratingLineText(ratingAlignment: ratingAlignment, sharedCount: sharedShows.count)
+
+        return FriendTasteCompatibility(
+            score: min(100, max(0, score)),
+            label: label,
+            subtitle: subtitle,
+            sharedShows: Array(sharedShows.prefix(3)),
+            sharedGenres: Array(sharedGenres.prefix(3)),
+            ratingLine: ratingLine
+        )
+    }
+
+    private static func label(for score: Int, sharedCount: Int) -> String {
+        switch score {
+        case 86...100: return "taste twin"
+        case 70..<86:  return "strong taste match"
+        case 52..<70:  return sharedCount > 0 ? "good overlap" : "same genre lane"
+        case 32..<52:  return "different but compatible"
+        default:       return "new taste orbit"
+        }
+    }
+
+    private static func subtitleText(score: Int, sharedShows: [Show], sharedGenres: [String]) -> String {
+        let genreText = sharedGenres.prefix(2).joined(separator: " + ")
+        if !sharedShows.isEmpty {
+            let count = sharedShows.count
+            if genreText.isEmpty {
+                return "\(count) shared show\(count == 1 ? "" : "s") in rotation."
+            }
+            return "\(count) shared show\(count == 1 ? "" : "s") across \(genreText)."
+        }
+        if !genreText.isEmpty {
+            return "No shared shows yet, but both lean \(genreText)."
+        }
+        if score > 30 {
+            return "Similar rating energy, different queues."
+        }
+        return "Watch something together to build compatibility."
+    }
+
+    private static func ratingLineText(ratingAlignment: Double, sharedCount: Int) -> String {
+        if sharedCount > 0 {
+            switch ratingAlignment {
+            case 0.82...: return "ratings are closely aligned"
+            case 0.58..<0.82: return "ratings mostly agree"
+            default: return "ratings split in interesting ways"
+            }
+        }
+        switch ratingAlignment {
+        case 0.82...: return "similar average rating energy"
+        case 0.58..<0.82: return "nearby rating energy"
+        default: return "opposite rating energy"
+        }
+    }
+
+    private static func categoryScores(shows: [(show: Show, score: Double, weight: Double)]) -> [String: Double] {
+        var result: [String: Double] = [:]
+        for item in shows {
+            let scoreWeight = max(0.72, min(1.28, item.score / 3.6))
+            for category in categories(for: item.show) {
+                result[category, default: 0] += item.weight * scoreWeight
+            }
+        }
+        return result
+    }
+
+    private static func categories(for show: Show) -> Set<String> {
+        let text = [
+            show.title,
+            show.genre ?? "",
+            show.platform,
+            show.platforms?.joined(separator: " ") ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        var categories = Set<String>()
+        if text.contains("sci-fi") || text.contains("science fiction") || text.contains("sci fi") {
+            categories.insert("sci-fi")
+        }
+        if text.contains("drama") {
+            categories.insert("drama")
+        }
+        if text.contains("comedy") || text.contains("sitcom") {
+            categories.insert("comedy")
+        }
+        if text.contains("thriller") || text.contains("mystery") || text.contains("spy") {
+            categories.insert("thriller")
+        }
+        if text.contains("crime") || text.contains("detective") {
+            categories.insert("crime")
+        }
+        if text.contains("horror") || text.contains("dark") {
+            categories.insert("dark")
+        }
+        if text.contains("historical") || text.contains("period") {
+            categories.insert("historical")
+        }
+        if text.contains("anime") || show.isAnime {
+            categories.insert("anime")
+        }
+        if text.contains("romance") || text.contains("romantic") {
+            categories.insert("romance")
+        }
+        if categories.isEmpty {
+            categories.insert("eclectic")
+        }
+        return categories
+    }
+
+    private static func weightedJaccard(_ lhs: [String: Double], _ rhs: [String: Double]) -> Double {
+        let keys = Set(lhs.keys).union(rhs.keys)
+        guard !keys.isEmpty else { return 0 }
+        let intersection = keys.reduce(0) { $0 + min(lhs[$1, default: 0], rhs[$1, default: 0]) }
+        let union = keys.reduce(0) { $0 + max(lhs[$1, default: 0], rhs[$1, default: 0]) }
+        return union <= 0 ? 0 : intersection / union
+    }
+
+    private static func strongestSharedGenres(_ lhs: [String: Double], _ rhs: [String: Double]) -> [String] {
+        Set(lhs.keys)
+            .intersection(rhs.keys)
+            .filter { $0 != "eclectic" }
+            .sorted { first, second in
+                let firstScore = min(lhs[first, default: 0], rhs[first, default: 0])
+                let secondScore = min(lhs[second, default: 0], rhs[second, default: 0])
+                if abs(firstScore - secondScore) < 0.001 { return first < second }
+                return firstScore > secondScore
+            }
+    }
+
+    private static func ratingAlignment(
+        sharedIds: Set<Int>,
+        myShowById: [Int: MyShow],
+        friend: Friend,
+        activities: [Activity],
+        myShows: [MyShow]
+    ) -> Double {
+        let sharedAlignment = sharedIds.compactMap { showId -> Double? in
+            guard let myScore = myShowById[showId]?.score, myScore > 0 else { return nil }
+            let friendScore = friendScore(for: showId, friend: friend, activities: activities)
+            return max(0, 1 - abs(myScore - friendScore) / 4.0)
+        }
+        if let average = sharedAlignment.average {
+            return average
+        }
+
+        let myAverage = myShows.filter { $0.score > 0 }.map(\.score).average ?? 3.5
+        return max(0, 1 - abs(myAverage - friend.score) / 4.0)
+    }
+
+    private static func friendScore(for showId: Int, friend: Friend, activities: [Activity]) -> Double {
+        activities.first { $0.friendId == friend.id && $0.showId == showId }?.score ?? friend.score
+    }
+}
+
+private struct FriendCompatibilityCard: View {
+    let friend: Friend
+    let compatibility: FriendTasteCompatibility
     var onOpenShow: (Show) -> Void
 
     private var accent: Color {
-        switch score {
-        case 80...100: return Color(hex: "8FD28A")
-        case 58..<80:  return Color(hex: "F0DDAF")
-        case 35..<58:  return Color(hex: "75B8FF")
+        switch compatibility.score {
+        case 86...100: return Color(hex: "8FD28A")
+        case 70..<86:  return Color(hex: "F0DDAF")
+        case 52..<70:  return Color(hex: "75B8FF")
+        case 32..<52:  return Color(hex: "B6C7FF")
         default:       return Color(hex: friend.hexColor)
         }
     }
@@ -462,28 +647,28 @@ private struct FriendCompatibilityCard: View {
                     Circle()
                         .stroke(Color.white.opacity(0.08), lineWidth: 5)
                     Circle()
-                        .trim(from: 0, to: CGFloat(score) / 100)
+                        .trim(from: 0, to: CGFloat(compatibility.score) / 100)
                         .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    Text("\(score)")
+                    Text("\(compatibility.score)")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 48, height: 48)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("show compatibility")
+                    Text("TV taste compatibility")
                         .font(StelrTypography.microLabel)
                         .tracking(1.5)
                         .foregroundStyle(.secondary.opacity(0.62))
                         .textCase(.uppercase)
 
-                    Text(label)
+                    Text(compatibility.label)
                         .font(StelrTypography.calloutStrong)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
-                    Text(subtitle)
+                    Text(compatibility.subtitle)
                         .font(StelrTypography.metadata)
                         .foregroundStyle(.secondary.opacity(0.70))
                         .lineLimit(2)
@@ -492,7 +677,36 @@ private struct FriendCompatibilityCard: View {
                 Spacer(minLength: 0)
             }
 
-            if sharedShows.isEmpty {
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 10.2, weight: .semibold))
+                Text(compatibility.ratingLine)
+                    .font(StelrTypography.metadataStrong)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(accent.opacity(0.88))
+
+            if !compatibility.sharedGenres.isEmpty {
+                HStack(spacing: 7) {
+                    ForEach(compatibility.sharedGenres, id: \.self) { genre in
+                        Text(genre)
+                            .font(StelrTypography.microLabel)
+                            .foregroundStyle(accent.opacity(0.95))
+                            .padding(.horizontal, 8)
+                            .frame(height: 26)
+                            .background(accent.opacity(0.10), in: Capsule(style: .continuous))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(accent.opacity(0.16), lineWidth: 0.6)
+                            )
+                    }
+
+                    Spacer(minLength: 0)
+                }
+            }
+
+            if compatibility.sharedShows.isEmpty {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 10.5, weight: .semibold))
@@ -506,7 +720,7 @@ private struct FriendCompatibilityCard: View {
                 .background(accent.opacity(0.10), in: Capsule(style: .continuous))
             } else {
                 HStack(spacing: 8) {
-                    ForEach(sharedShows) { show in
+                    ForEach(compatibility.sharedShows) { show in
                         Button {
                             StelrHaptics.lightTap()
                             onOpenShow(show)

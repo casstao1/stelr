@@ -122,7 +122,7 @@ struct HomeView: View {
                                         Spacer(minLength: 8)
                                         HStack(spacing: 7) {
                                             pillButton("dot.radiowaves.left.and.right", label: "rally") { showRally = true }
-                                            pillButton("star", label: "vibe check") { showVibeSheet = true }
+                                            pillButton("star", label: "check in") { showVibeSheet = true }
                                             pillButton("info.circle", label: "info") { detailShow = heroShow }
                                         }
                                         .fixedSize()

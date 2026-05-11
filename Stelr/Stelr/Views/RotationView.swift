@@ -291,7 +291,7 @@ private struct MyShowRow: View {
                             StelrFourPointStar(variant: .twinkle)
                                 .fill(Color.stelrMuted)
                                 .frame(width: 12, height: 12)
-                            Text("vibe check").font(.system(size: 13.2, weight: .medium))
+                            Text("check in").font(.system(size: 13.2, weight: .medium))
                         }
                         .foregroundColor(.stelrMuted)
                         .padding(.horizontal, 11).padding(.vertical, 7)

@@ -5,6 +5,7 @@ struct ProfileView: View {
     @State private var showAuthSheet = false
     @State private var showCreateList = false
     @State private var editingList: ShowList? = nil
+    @State private var previewList: ShowList? = nil
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -40,6 +41,9 @@ struct ProfileView: View {
 
                             Text(user.email ?? "")
                                 .font(.system(size: 15.7)).foregroundColor(.stelrMuted)
+
+                            TasteAuraBadge(aura: profileTasteAura, compact: true)
+                                .padding(.horizontal, 20)
 
                             // Stats
                             HStack(spacing: 0) {
@@ -104,9 +108,24 @@ struct ProfileView: View {
             CreateListSheet(editingList: list)
                 .environmentObject(appState)
         }
+        .fullScreenCover(item: $previewList) { list in
+            ListConstellationView(list: list) {
+                previewList = nil
+            }
+            .environmentObject(appState)
+        }
     }
 
     // MARK: Lists section
+
+    private var profileTasteAura: TasteAura {
+        TasteAura.make(
+            myShows: appState.myShows,
+            allShows: appState.shows,
+            lists: appState.myLists,
+            watchlistShows: appState.watchlistShows
+        )
+    }
 
     private var listsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -148,8 +167,14 @@ struct ProfileView: View {
                 VStack(spacing: 10) {
                     ForEach(appState.myLists) { list in
                         ListCardView(list: list)
-                            .onTapGesture { editingList = list }
+                            .onTapGesture { previewList = list }
                             .contextMenu {
+                                Button {
+                                    editingList = list
+                                } label: {
+                                    Label("Edit list", systemImage: "pencil")
+                                }
+
                                 Button(role: .destructive) {
                                     appState.deleteList(id: list.id)
                                 } label: {

@@ -383,7 +383,8 @@ struct CreateListSheet: View {
 
         Button {
             guard !alreadyUsed else { return }
-            addEntry(ShowListEntry(rank: rank, showId: show.id))
+            let rememberedShow = appState.rememberListShow(show)
+            addEntry(ShowListEntry(rank: rank, showId: rememberedShow.id))
         } label: {
             HStack(spacing: 12) {
                 ShowPosterView(show: show, width: 36, height: 50)
@@ -490,7 +491,7 @@ struct CreateListSheet: View {
                 appState.saveList(list)
                 dismiss()
             } label: {
-                Text(isEditing ? "save changes" : "create list")
+                Text(isEditing ? "save changes" : "save list")
                     .font(.system(size: 16.8, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)

@@ -335,6 +335,8 @@ enum MilestoneKind: String, Codable {
     case checkInStreak
     case coWatchStreak
     case seasonComplete
+    /// Fired when the user is the first person in their entire friend group to vibe check a show.
+    case roverPioneer
 }
 
 struct Milestone: Identifiable, Equatable {
@@ -446,6 +448,10 @@ struct AniListGraphQLResponse<T: Decodable>: Decodable {
 
 struct AniListPageData: Decodable {
     let Page: AniListMediaPage
+}
+
+struct AniListMediaData: Decodable {
+    let Media: AniListMedia?
 }
 
 struct AniListMediaPage: Decodable {

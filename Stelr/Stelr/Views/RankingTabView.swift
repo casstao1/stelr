@@ -175,27 +175,13 @@ struct RankingTabView: View {
     }
 
     private var rankingDescription: some View {
-        HStack(alignment: .top, spacing: 7) {
-            Image(systemName: selectedDimension.icon)
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(Color.stelrAccent.opacity(0.82))
-                .frame(width: 14, height: 14)
-
-            Text(selectedDimension.description)
-                .font(.system(size: 12.2, weight: .regular))
-                .foregroundColor(.stelrMuted.opacity(0.72))
-                .lineSpacing(1)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color.white.opacity(0.065), lineWidth: 0.6)
-        )
-        .animation(.easeInOut(duration: 0.18), value: selectedDimension)
+        Text(selectedDimension.description)
+            .font(.system(size: 12.8, weight: .regular))
+            .foregroundColor(.stelrMuted.opacity(0.72))
+            .lineSpacing(1)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.easeInOut(duration: 0.18), value: selectedDimension)
     }
 
     // MARK: Leaderboard

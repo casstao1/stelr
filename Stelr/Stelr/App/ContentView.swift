@@ -78,26 +78,39 @@ private struct AchievementToastView: View {
     @State private var completed = false
     @State private var dismissed = false
 
-    private var accent: Color {
-        Color(hex: milestone.accentHex)
-    }
+    private var accent: Color { Color(hex: milestone.accentHex) }
+    private var isRover: Bool { milestone.kind == .roverPioneer }
 
     var body: some View {
+        Group {
+            if isRover {
+                roverBanner
+            } else {
+                standardToast
+            }
+        }
+        .opacity(dismissed ? 0 : (appeared ? 1 : 0))
+        .offset(y: dismissed ? -28 : (appeared ? 0 : -86))
+        .scaleEffect(appeared && !dismissed ? 1 : 0.98, anchor: .top)
+        .onAppear { runSequence() }
+        .onChange(of: milestone.id) { _, _ in runSequence() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isRover ? "Rover — \(milestone.subtitle)" : "Achievement unlocked, \(milestone.title)")
+    }
+
+    // MARK: Standard achievement toast
+
+    private var standardToast: some View {
         HStack(spacing: 11) {
             ZStack {
                 Circle()
                     .fill(accent.opacity(0.14))
                     .frame(width: 36, height: 36)
-
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(
-                        accent,
-                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
-                    )
+                    .stroke(accent, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: 36, height: 36)
-
                 Image(systemName: completed ? "checkmark" : milestone.systemImage)
                     .font(.system(size: completed ? 13.5 : 12.5, weight: .bold))
                     .foregroundStyle(completed ? .white : accent)
@@ -110,12 +123,10 @@ private struct AchievementToastView: View {
                     .tracking(0.7)
                     .foregroundStyle(accent)
                     .textCase(.uppercase)
-
                 Text(milestone.title)
                     .font(.system(size: 14.2, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-
                 Text(milestone.subtitle)
                     .font(.system(size: 11.8, weight: .regular))
                     .foregroundStyle(.secondary)
@@ -142,29 +153,109 @@ private struct AchievementToastView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(
                     LinearGradient(
-                        colors: [
-                            accent.opacity(0.34),
-                            Color.white.opacity(0.10)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.8
+                        colors: [accent.opacity(0.34), Color.white.opacity(0.10)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ), lineWidth: 0.8
                 )
         )
         .shadow(color: accent.opacity(0.18), radius: 18, y: 10)
         .shadow(color: .black.opacity(0.28), radius: 20, y: 12)
-        .opacity(dismissed ? 0 : (appeared ? 1 : 0))
-        .offset(y: dismissed ? -28 : (appeared ? 0 : -86))
-        .scaleEffect(appeared && !dismissed ? 1 : 0.98, anchor: .top)
-        .onAppear {
-            runSequence()
+    }
+
+    // MARK: Rover pioneer banner
+    //
+    // Visually distinct from regular achievements — wider, two-row layout,
+    // amber star-trail glow — to signal this is a rare "first explorer" moment.
+
+    private var roverBanner: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ── Top row: eyebrow label + "1st" badge ──────────────────────────
+            HStack(spacing: 6) {
+                Image(systemName: completed ? "checkmark.circle.fill" : "scope")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(completed ? Color.white : accent)
+                    .scaleEffect(completed ? 1.1 : 1)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.62), value: completed)
+
+                Text("ROVER")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundStyle(accent)
+
+                // Thin progress trail replacing the circular ring
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(accent.opacity(0.14))
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [accent.opacity(0.7), accent],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                            .frame(width: g.size.width * progress)
+                    }
+                }
+                .frame(height: 3)
+                .clipShape(Capsule())
+
+                Spacer(minLength: 4)
+
+                // "1st" badge
+                Text(milestone.badge)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.black.opacity(0.82))
+                    .padding(.horizontal, 9)
+                    .frame(height: 22)
+                    .background(accent, in: Capsule())
+            }
+            .padding(.bottom, 8)
+
+            // ── Main title ────────────────────────────────────────────────────
+            Text(milestone.title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+
+            // ── Subtitle ──────────────────────────────────────────────────────
+            Text(milestone.subtitle)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.white.opacity(0.58))
+                .lineLimit(2)
+                .padding(.top, 3)
         }
-        .onChange(of: milestone.id) { _, _ in
-            runSequence()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background {
+            // Base: dark frosted material
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(hex: "0F0F1C").opacity(0.88))
+                .background(.ultraThinMaterial,
+                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            // Amber radial sweep from top-left — unique to rover banner
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(
+                    RadialGradient(
+                        colors: [accent.opacity(0.22), accent.opacity(0.06), .clear],
+                        center: .topLeading,
+                        startRadius: 0,
+                        endRadius: 180
+                    )
+                )
+                .blendMode(.screen)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Achievement unlocked, \(milestone.title)")
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [accent.opacity(0.55), accent.opacity(0.10), Color.white.opacity(0.06)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ), lineWidth: 0.9
+                )
+        )
+        .shadow(color: accent.opacity(0.28), radius: 22, y: 10)
+        .shadow(color: .black.opacity(0.32), radius: 20, y: 12)
     }
 
     private func runSequence() {
@@ -426,7 +517,10 @@ struct ContentView: View {
     @State private var keyboardVisible = false
     @State private var searchFocusToken = 0
 
-    private let tabAnimationCooldown: TimeInterval = 10
+    // Entrance animations play on first visit to a tab, then again only after
+    // the user has been away from that tab for 5+ minutes — matching standard
+    // iOS app conventions (Apple HIG: tab switching should feel instant on return).
+    private let tabAnimationCooldown: TimeInterval = 300
 
     var body: some View {
         GeometryReader { geo in
@@ -537,6 +631,7 @@ struct ContentView: View {
                 .zIndex(2200)
             }
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .animation(.spring(response: 0.44, dampingFraction: 0.84), value: appState.activeAchievementToast?.id)
     }
 
@@ -565,7 +660,7 @@ struct ContentView: View {
     }
 
     private var shouldShowFloatingTabBar: Bool {
-        tabBarLaunchVisibility && !appState.isShowDetailPresented && !(selectedTab == .search && keyboardVisible)
+        tabBarLaunchVisibility && !appState.isShowDetailPresented
     }
 
     @ViewBuilder
@@ -636,7 +731,7 @@ struct ContentView: View {
         friendProfileShowId = nil
         keyboardVisible = false
         markTabVisited(previousTab)
-        visitTab(tab, forceAnimate: true)
+        visitTab(tab)   // respects cooldown — animates first visit, skips on quick returns
         selectedTab = tab
         if tab == .search {
             searchFocusToken += 1

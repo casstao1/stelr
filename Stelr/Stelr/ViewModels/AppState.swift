@@ -337,6 +337,28 @@ final class AppState: ObservableObject {
         }
     }
 
+    @discardableResult
+    func rememberListShow(_ show: Show) -> Show {
+        let show = upsertShow(show)
+        if isAuthenticated {
+            Task { try? await supabase.upsertShow(show) }
+        }
+        return show
+    }
+
+    func restoreMissingListShows(for list: ShowList) async {
+        let missingIds = Set(
+            list.entries.compactMap { entry -> Int? in
+                guard let showId = entry.showId, show(for: showId) == nil else { return nil }
+                return showId
+            }
+        )
+
+        for showId in missingIds {
+            await restoreListShow(showId: showId)
+        }
+    }
+
     func deleteList(id: UUID) {
         withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
             myLists.removeAll { $0.id == id }
@@ -349,6 +371,25 @@ final class AppState: ObservableObject {
     func show(forListEntry entry: ShowListEntry) -> Show? {
         guard let showId = entry.showId else { return nil }
         return show(for: showId)
+    }
+
+    private func restoreListShow(showId: Int) async {
+        if showId > 0 {
+            do {
+                var show = makeTVMazeShow(from: try await TVMazeService.shared.getShow(id: showId))
+                await TVMazeService.shared.enrichShow(&show)
+                rememberListShow(show)
+            } catch {
+                return
+            }
+        } else {
+            do {
+                let show = makeAniListShow(from: try await AniListService.shared.getAnime(id: abs(showId)))
+                rememberListShow(show)
+            } catch {
+                return
+            }
+        }
     }
 
     // ── Shooting star queue ───────────────────────────────────────────────────
@@ -910,16 +951,32 @@ final class AppState: ObservableObject {
     private func recordCheckInMilestones(show: Show, isFirstCheckInForShow: Bool) {
         withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
             if isFirstCheckInForShow {
-                prependMilestone(
-                    kind: .firstVibeCheck,
-                    title: "First vibe check",
-                    subtitle: "\(show.title) has its first trail marker.",
-                    badge: "new",
-                    systemImage: "sparkle",
-                    accentHex: show.accentColor,
-                    showId: show.id,
-                    friendId: nil
-                )
+                // Pioneer check: no one in the friend group has seen this show yet.
+                // Rover supersedes the plain firstVibeCheck — no need to show both.
+                let noFriendsWatching = friendsWatching(showId: show.id).isEmpty
+                if noFriendsWatching {
+                    prependMilestone(
+                        kind: .roverPioneer,
+                        title: "Rover",
+                        subtitle: "You're the first in your orbit to explore \(show.title).",
+                        badge: "1st",
+                        systemImage: "scope",
+                        accentHex: "D4832A",
+                        showId: show.id,
+                        friendId: nil
+                    )
+                } else {
+                    prependMilestone(
+                        kind: .firstVibeCheck,
+                        title: "First vibe check",
+                        subtitle: "\(show.title) has its first trail marker.",
+                        badge: "new",
+                        systemImage: "sparkle",
+                        accentHex: show.accentColor,
+                        showId: show.id,
+                        friendId: nil
+                    )
+                }
             }
 
             checkInStreakDays += 1
